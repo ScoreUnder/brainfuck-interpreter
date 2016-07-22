@@ -1,12 +1,18 @@
 #include<stdbool.h>
+#include<stdint.h>
 #include<stdlib.h>
 #include<stdio.h>
+#include<string.h>
 #include<sys/mman.h>
 #include<sys/types.h>
 #include<sys/stat.h>
 #include<fcntl.h>
 #include<unistd.h>
 #include<err.h>
+
+#ifndef DEBUG
+#define DEBUG 0
+#endif
 
 enum {
 	BF_OP_ALTER, BF_OP_IN, BF_OP_OUT, BF_OP_LOOP, BF_OP_ONCE
@@ -46,7 +52,8 @@ bf_op* build_bf_tree(char *data, size_t *pos, size_t len, bool expecting_bracket
 		switch (c) {
 			case '+':
 			case '-':
-				if (my_ops[my_ops_len - 1].op_type != BF_OP_ALTER) {
+				if (my_ops_len == 0
+						|| my_ops[my_ops_len - 1].op_type != BF_OP_ALTER) {
 new_alter:
 					if (my_ops_len == allocated) {
 						allocated *= 2;
@@ -61,8 +68,9 @@ new_alter:
 				break;
 			case '>':
 			case '<':
-				if (my_ops[my_ops_len - 1].op_type != BF_OP_ALTER
-					|| my_ops[my_ops_len - 1].amount != 0) {
+				if (my_ops_len == 0
+						|| my_ops[my_ops_len - 1].op_type != BF_OP_ALTER
+						|| my_ops[my_ops_len - 1].amount != 0) {
 					goto new_alter;
 				}
 				break;
@@ -112,6 +120,74 @@ end:
 	return my_ops;
 }
 
+struct {
+	size_t size;
+	size_t back_size;
+	ssize_t pos;
+	uint8_t *cells;
+	uint8_t *back_cells;
+} tape;
+
+void execute(bf_op *op) {
+#define CELL *(tape.pos >= 0 ? &tape.cells[tape.pos] : &tape.back_cells[-1 - tape.pos])
+	switch (op->op_type) {
+		case BF_OP_ONCE:
+			if (DEBUG) printf("Executing %d root commands\n", (int)op->child_op_count);
+			for (size_t i = 0; i < op->child_op_count; i++)
+				execute(op->child_op + i);
+			break;
+
+		case BF_OP_ALTER:
+			if (DEBUG) printf(">*%d, +*%d\n", op->offset, op->amount);
+
+			tape.pos += op->offset;
+
+			if (tape.pos >= 0) {
+				if (tape.size <= (size_t) tape.pos) {
+					if (DEBUG) puts("need tape alloc");
+					size_t old_size = tape.size;
+					while (tape.size <= (size_t) tape.pos) {
+						tape.size *= 2;
+					}
+					tape.cells = realloc(tape.cells, tape.size * sizeof *tape.cells);
+					memset(tape.cells + old_size, 0, tape.size - old_size);
+				}
+			} else {
+				if (tape.back_size < (size_t)-tape.pos) {
+					if (DEBUG) puts("need backtape alloc");
+					size_t old_size = tape.back_size;
+					while (tape.back_size < (size_t)-tape.pos) {
+						tape.size *= 2;
+					}
+					tape.back_cells = realloc(tape.back_cells, tape.back_size * sizeof *tape.back_cells);
+					memset(tape.back_cells + old_size, 0, tape.back_size - old_size);
+				}
+			}
+
+			CELL += op->amount;
+			break;
+
+		case BF_OP_IN:
+			CELL = getchar();
+			break;
+
+		case BF_OP_OUT:
+			putchar(CELL);
+			break;
+
+		case BF_OP_LOOP:
+			if (DEBUG) printf("Looping\n");
+			while (CELL != 0)
+				for (size_t i = 0; i < op->child_op_count; i++)
+					execute(op->child_op + i);
+			break;
+
+		default:
+			errx(1, "Invalid internal state");
+	}
+#undef CELL
+}
+
 /*
  * + (*data)++
  * - (*data)--
@@ -135,9 +211,17 @@ int main(int argc, char **argv){
 	char *map = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
 	if (map == NULL) err(1, "Can't mmap file %s", filename);
 
+	tape.pos = 0;
+	tape.size = 16;
+	tape.cells = calloc(sizeof *tape.cells, tape.size);
+	tape.back_size = 16;
+	tape.back_cells = calloc(sizeof *tape.back_cells, tape.back_size);
+
 	size_t pos = 0;
 	bf_op root = {.op_type = BF_OP_ONCE};
 	root.child_op = build_bf_tree(map, &pos, size, false, &root.child_op_count);
+
+	execute(&root);
 
 	munmap(map, size);
 	close(fd);
