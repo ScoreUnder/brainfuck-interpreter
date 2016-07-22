@@ -11,7 +11,11 @@
 #include<err.h>
 
 enum {
-	BF_OP_ALTER, BF_OP_IN, BF_OP_OUT, BF_OP_LOOP, BF_OP_ONCE
+	BF_OP_ALTER, BF_OP_IN, BF_OP_OUT, BF_OP_LOOP,
+	// Pseudo-ops
+	BF_OP_ONCE,
+	// Optimized ops
+	BF_OP_ZERO, BF_OP_MULTIPLY,
 };
 
 typedef uint8_t cell_int;
@@ -101,6 +105,41 @@ new_alter:
 				break;
 			case '[':
 				op->child_op = build_bf_tree(data, &i, len, true, &op->child_op_count);
+				// Shite optimizations
+				if (op->child_op_count == 1
+						&& op->child_op[0].op_type == BF_OP_ALTER
+						&& op->child_op[0].offset == 0
+						&& (op->child_op[0].amount == 1
+							|| op->child_op[0].amount == (cell_int)-1)) {
+					free(op->child_op);
+					op->op_type = BF_OP_ZERO;
+				} else if (op->child_op_count == 2
+						&& op->child_op[0].op_type == BF_OP_ALTER
+						&& op->child_op[1].op_type == BF_OP_ALTER
+						&& op->child_op[0].offset == -op->child_op[1].offset
+						&& op->child_op[1].amount == (cell_int)-1) {
+					ssize_t offset = op->child_op[0].offset;
+					cell_int scalar = op->child_op[0].amount;
+					free(op->child_op);
+					op->op_type = BF_OP_MULTIPLY;
+					op->offset = offset;
+					op->amount = scalar;
+				} else if (op->child_op_count == 3
+						&& op->child_op[0].op_type == BF_OP_ALTER
+						&& op->child_op[1].op_type == BF_OP_ALTER
+						&& op->child_op[2].op_type == BF_OP_ALTER
+						&& op->child_op[0].offset == 0
+						&& op->child_op[1].offset == -op->child_op[2].offset
+						&& op->child_op[0].amount == (cell_int)-1
+						&& op->child_op[2].amount == 0) {
+					// TODO this should really be handled by some kind of optimizer which shuffles lonely incs/decs to the right
+					ssize_t offset = op->child_op[1].offset;
+					cell_int scalar = op->child_op[1].amount;
+					free(op->child_op);
+					op->op_type = BF_OP_MULTIPLY;
+					op->offset = offset;
+					op->amount = scalar;
+				}
 				break;
 			case ']':
 				if (!expecting_bracket) errx(1, "Unexpected end of loop");
@@ -126,6 +165,29 @@ struct {
 	cell_int *back_cells;
 } tape;
 
+void tape_ensure_space(ssize_t pos) {
+	if (pos >= 0) {
+		if (tape.size <= (size_t) pos) {
+			size_t old_size = tape.size;
+			while (tape.size <= (size_t) pos) {
+				tape.size *= 2;
+			}
+			tape.cells = realloc(tape.cells, tape.size * sizeof *tape.cells);
+			memset(tape.cells + old_size, 0, tape.size - old_size);
+		}
+	} else {
+		pos = -pos;
+		if (tape.back_size < (size_t)pos) {
+			size_t old_size = tape.back_size;
+			while (tape.back_size < (size_t)pos) {
+				tape.back_size *= 2;
+			}
+			tape.back_cells = realloc(tape.back_cells, tape.back_size * sizeof *tape.back_cells);
+			memset(tape.back_cells + old_size, 0, tape.back_size - old_size);
+		}
+	}
+}
+
 void execute(bf_op *op) {
 #define CELL *(tape.pos >= 0 ? &tape.cells[tape.pos] : &tape.back_cells[-1 - tape.pos])
 	switch (op->op_type) {
@@ -136,29 +198,24 @@ void execute(bf_op *op) {
 
 		case BF_OP_ALTER:
 			tape.pos += op->offset;
-
-			if (tape.pos >= 0) {
-				if (tape.size <= (size_t) tape.pos) {
-					size_t old_size = tape.size;
-					while (tape.size <= (size_t) tape.pos) {
-						tape.size *= 2;
-					}
-					tape.cells = realloc(tape.cells, tape.size * sizeof *tape.cells);
-					memset(tape.cells + old_size, 0, tape.size - old_size);
-				}
-			} else {
-				if (tape.back_size < (size_t)-tape.pos) {
-					size_t old_size = tape.back_size;
-					while (tape.back_size < (size_t)-tape.pos) {
-						tape.size *= 2;
-					}
-					tape.back_cells = realloc(tape.back_cells, tape.back_size * sizeof *tape.back_cells);
-					memset(tape.back_cells + old_size, 0, tape.back_size - old_size);
-				}
-			}
-
+			tape_ensure_space(tape.pos);
 			CELL += op->amount;
 			break;
+
+		case BF_OP_ZERO:
+			CELL = 0;
+			break;
+
+		case BF_OP_MULTIPLY: {
+			cell_int orig = CELL;
+			if (orig == 0) break;
+			tape.pos += op->offset;
+			tape_ensure_space(tape.pos);
+			CELL += orig * op->amount;
+			tape.pos -= op->offset;
+			CELL = 0;
+			break;
+		}
 
 		case BF_OP_IN: {
 			int input = getchar();
