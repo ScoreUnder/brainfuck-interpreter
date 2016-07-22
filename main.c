@@ -14,6 +14,8 @@ enum {
 	BF_OP_ALTER, BF_OP_IN, BF_OP_OUT, BF_OP_LOOP, BF_OP_ONCE
 };
 
+typedef uint8_t cell_int;
+
 typedef struct s_bf_op {
 	unsigned int op_type;
 	union {
@@ -23,7 +25,7 @@ typedef struct s_bf_op {
 		};
 		struct {
 			int offset;
-			int amount;
+			cell_int amount;
 		};
 	};
 } bf_op;
@@ -120,8 +122,8 @@ struct {
 	size_t size;
 	size_t back_size;
 	ssize_t pos;
-	uint8_t *cells;
-	uint8_t *back_cells;
+	cell_int *cells;
+	cell_int *back_cells;
 } tape;
 
 void execute(bf_op *op) {
