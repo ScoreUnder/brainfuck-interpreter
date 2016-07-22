@@ -160,9 +160,12 @@ void execute(bf_op *op) {
 			CELL += op->amount;
 			break;
 
-		case BF_OP_IN:
-			CELL = getchar();
+		case BF_OP_IN: {
+			int input = getchar();
+			if (input == EOF && sizeof(cell_int) == 1) input = 0;
+			CELL = input;
 			break;
+		}
 
 		case BF_OP_OUT:
 			putchar(CELL);
