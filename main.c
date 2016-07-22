@@ -10,10 +10,6 @@
 #include<unistd.h>
 #include<err.h>
 
-#ifndef DEBUG
-#define DEBUG 0
-#endif
-
 enum {
 	BF_OP_ALTER, BF_OP_IN, BF_OP_OUT, BF_OP_LOOP, BF_OP_ONCE
 };
@@ -132,19 +128,15 @@ void execute(bf_op *op) {
 #define CELL *(tape.pos >= 0 ? &tape.cells[tape.pos] : &tape.back_cells[-1 - tape.pos])
 	switch (op->op_type) {
 		case BF_OP_ONCE:
-			if (DEBUG) printf("Executing %d root commands\n", (int)op->child_op_count);
 			for (size_t i = 0; i < op->child_op_count; i++)
 				execute(op->child_op + i);
 			break;
 
 		case BF_OP_ALTER:
-			if (DEBUG) printf(">*%d, +*%d\n", op->offset, op->amount);
-
 			tape.pos += op->offset;
 
 			if (tape.pos >= 0) {
 				if (tape.size <= (size_t) tape.pos) {
-					if (DEBUG) puts("need tape alloc");
 					size_t old_size = tape.size;
 					while (tape.size <= (size_t) tape.pos) {
 						tape.size *= 2;
@@ -154,7 +146,6 @@ void execute(bf_op *op) {
 				}
 			} else {
 				if (tape.back_size < (size_t)-tape.pos) {
-					if (DEBUG) puts("need backtape alloc");
 					size_t old_size = tape.back_size;
 					while (tape.back_size < (size_t)-tape.pos) {
 						tape.size *= 2;
@@ -176,7 +167,6 @@ void execute(bf_op *op) {
 			break;
 
 		case BF_OP_LOOP:
-			if (DEBUG) printf("Looping\n");
 			while (CELL != 0)
 				for (size_t i = 0; i < op->child_op_count; i++)
 					execute(op->child_op + i);
