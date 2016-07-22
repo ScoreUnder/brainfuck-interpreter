@@ -24,7 +24,7 @@ typedef struct s_bf_op {
 			struct s_bf_op *child_op;
 		};
 		struct {
-			int offset;
+			ssize_t offset;
 			cell_int amount;
 		};
 	};
