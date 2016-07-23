@@ -18,10 +18,12 @@ enum {
 	BF_OP_SET, BF_OP_MULTIPLY, BF_OP_SKIP,
 };
 
-typedef uint8_t cell_int;
+typedef int8_t cell_int;
 
 typedef struct s_bf_op {
 	unsigned int op_type;
+	unsigned int count;
+	uint64_t time;
 	union {
 		struct {
 			size_t child_op_count;
@@ -237,10 +239,20 @@ void execute(bf_op *op) {
 			putchar(CELL);
 			break;
 
-		case BF_OP_LOOP:
-			while (CELL != 0)
+		case BF_OP_LOOP: {
+			uint32_t hi, lo;
+			__asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
+			uint64_t start = ((uint64_t)hi << 32) | ((uint64_t)lo);
+			while (CELL != 0) {
 				for (size_t i = 0; i < op->child_op_count; i++)
 					execute(op->child_op + i);
+				op->count++;
+			}
+			__asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
+			uint64_t end = ((uint64_t)hi << 32) | ((uint64_t)lo);
+			op->time += end - start;
+			break;
+		}
 
 		case BF_OP_SKIP:
 			while (CELL != 0) {
@@ -253,6 +265,56 @@ void execute(bf_op *op) {
 			errx(1, "Invalid internal state");
 	}
 #undef CELL
+}
+
+void print(bf_op *op, int indent) {
+	switch (op->op_type) {
+		case BF_OP_ONCE:
+			for (size_t i = 0; i < op->child_op_count; i++)
+				print(op->child_op + i, indent);
+			break;
+
+		case BF_OP_ALTER:
+			if (op->offset > 0)
+				printf(">%d ", (int)op->offset);
+			else if (op->offset < 0)
+				printf("<%d ", (int)-op->offset);
+
+			if (op->amount)
+				printf("%+d ", (int)op->amount);
+			break;
+
+		case BF_OP_SET:
+			printf("SET%d ", (int)op->amount);
+			break;
+
+		case BF_OP_MULTIPLY:
+			printf("*%d @%d ", (int)op->amount, (int)op->offset);
+			break;
+
+		case BF_OP_IN:
+			printf(", ");
+			break;
+
+		case BF_OP_OUT:
+			printf(". ");
+			break;
+
+		case BF_OP_LOOP:
+			printf("[\n%*s", indent += 2, "");
+			for (size_t i = 0; i < op->child_op_count; i++)
+				print(op->child_op + i, indent);
+			indent -= 2;
+			printf("\n%*s] (%u @ %lu)\n%*s", indent, "", op->count, op->time, indent, "");
+			break;
+
+		case BF_OP_SKIP:
+			printf("S%d ", (int)op->offset);
+			break;
+
+		default:
+			errx(1, "Invalid internal state");
+	}
 }
 
 /*
@@ -288,7 +350,11 @@ int main(int argc, char **argv){
 	bf_op root = {.op_type = BF_OP_ONCE};
 	root.child_op = build_bf_tree(map, &pos, size, false, &root.child_op_count);
 
+	print(&root, 0);
+	printf("\n\n");
 	execute(&root);
+	printf("\n\n");
+	print(&root, 0);
 
 	munmap(map, size);
 	close(fd);
