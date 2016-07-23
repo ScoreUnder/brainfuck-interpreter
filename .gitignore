@@ -1,3 +1,5 @@
 brainfuck
 *.o
 *.gcda
+*.gch
+*.swp
