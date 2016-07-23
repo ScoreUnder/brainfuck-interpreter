@@ -276,12 +276,17 @@ void print(bf_op *op, int indent) {
 
 		case BF_OP_ALTER:
 			if (op->offset > 0)
-				printf(">%d ", (int)op->offset);
+				printf(">%d", (int)op->offset);
 			else if (op->offset < 0)
-				printf("<%d ", (int)-op->offset);
+				printf("<%d", (int)-op->offset);
+
+			if (op->amount && op->offset)
+				putchar('_');
 
 			if (op->amount)
-				printf("%+d ", (int)op->amount);
+				printf("%+d", (int)op->amount);
+
+			putchar(' ');
 			break;
 
 		case BF_OP_SET:
@@ -289,7 +294,7 @@ void print(bf_op *op, int indent) {
 			break;
 
 		case BF_OP_MULTIPLY:
-			printf("*%d @%d ", (int)op->amount, (int)op->offset);
+			printf("*%d_@%d ", (int)op->amount, (int)op->offset);
 			break;
 
 		case BF_OP_IN:
@@ -305,7 +310,7 @@ void print(bf_op *op, int indent) {
 			for (size_t i = 0; i < op->child_op_count; i++)
 				print(op->child_op + i, indent);
 			indent -= 2;
-			printf("\n%*s] (%u @ %lu)\n%*s", indent, "", op->count, op->time, indent, "");
+			printf("\n%*s] (%u @ %lu - %lf per)\n%*s", indent, "", op->count, op->time, (double)op->time / op->count, indent, "");
 			break;
 
 		case BF_OP_SKIP:
