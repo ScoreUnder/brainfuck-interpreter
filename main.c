@@ -15,7 +15,7 @@ enum {
 	// Pseudo-ops
 	BF_OP_ONCE,
 	// Optimized ops
-	BF_OP_ZERO, BF_OP_MULTIPLY,
+	BF_OP_SET, BF_OP_MULTIPLY, BF_OP_SKIP,
 };
 
 typedef uint8_t cell_int;
@@ -55,7 +55,8 @@ bf_op* build_bf_tree(char *data, size_t *pos, size_t len, bool expecting_bracket
 			case '+':
 			case '-':
 				if (my_ops_len == 0
-						|| my_ops[my_ops_len - 1].op_type != BF_OP_ALTER) {
+						|| (my_ops[my_ops_len - 1].op_type != BF_OP_ALTER
+							&& my_ops[my_ops_len - 1].op_type != BF_OP_SET)) {
 new_alter:
 					if (my_ops_len == allocated) {
 						allocated *= 2;
@@ -112,7 +113,8 @@ new_alter:
 						&& (op->child_op[0].amount == 1
 							|| op->child_op[0].amount == (cell_int)-1)) {
 					free(op->child_op);
-					op->op_type = BF_OP_ZERO;
+					op->op_type = BF_OP_SET;
+					op->amount = 0;
 				} else if (op->child_op_count == 2
 						&& op->child_op[0].op_type == BF_OP_ALTER
 						&& op->child_op[1].op_type == BF_OP_ALTER
@@ -139,6 +141,13 @@ new_alter:
 					op->op_type = BF_OP_MULTIPLY;
 					op->offset = offset;
 					op->amount = scalar;
+				} else if (op->child_op_count == 1
+						&& op->child_op[0].op_type == BF_OP_ALTER
+						&& op->child_op[0].amount == 0) {
+					ssize_t offset = op->child_op[0].offset;
+					free(op->child_op);
+					op->op_type = BF_OP_SKIP;
+					op->offset = offset;
 				}
 				break;
 			case ']':
@@ -202,8 +211,8 @@ void execute(bf_op *op) {
 			CELL += op->amount;
 			break;
 
-		case BF_OP_ZERO:
-			CELL = 0;
+		case BF_OP_SET:
+			CELL = op->amount;
 			break;
 
 		case BF_OP_MULTIPLY: {
@@ -232,6 +241,12 @@ void execute(bf_op *op) {
 			while (CELL != 0)
 				for (size_t i = 0; i < op->child_op_count; i++)
 					execute(op->child_op + i);
+
+		case BF_OP_SKIP:
+			while (CELL != 0) {
+				tape.pos += op->offset;
+				tape_ensure_space(tape.pos);
+			}
 			break;
 
 		default:
