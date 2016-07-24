@@ -222,6 +222,24 @@ void print_bf_op(bf_op *op, int indent) {
 }
 #endif
 
+void free_bf(bf_op *op) {
+	switch (op->op_type) {
+		case BF_OP_LOOP:
+		case BF_OP_ONCE: {
+			size_t children = op->children.len;
+			for (size_t i = 0; i < children; i++)
+				free_bf(&op->children.ops[i]);
+			if (children != 0)
+				free(op->children.ops);
+			break;
+		}
+
+		default:
+			// Everything else is fine
+			break;
+	}
+}
+
 /*
  * + (*data)++
  * - (*data)--
@@ -270,8 +288,12 @@ int main(int argc, char **argv){
 	};
 	flatten_bf(&root, &flat);
 
+	// For the tiny savings this will give us...
+	free_bf(&root);
+
 	execute(flat.data);
 
+	free(flat.data);
 	munmap(map, size);
 	close(fd);
 }
