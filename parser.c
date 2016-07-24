@@ -3,7 +3,7 @@
 #include "parser.h"
 #include "optimizer.h"
 
-static char op_type_for_char[] = {
+static char op_type_for_char[256] = {
 	['+'] = BF_OP_ALTER,
 	['-'] = BF_OP_ALTER,
 	['<'] = BF_OP_ALTER,
@@ -11,56 +11,48 @@ static char op_type_for_char[] = {
 	[','] = BF_OP_IN,
 	['.'] = BF_OP_OUT,
 	['['] = BF_OP_LOOP,
+	[']'] = BF_OP_LOOP,
 };
 
-bf_op* alloc_bf_op(bf_op_builder *ops) {
-	if (ops->len == ops->alloc) {
-		ops->alloc *= 2;
-		ops->out = realloc(ops->out, ops->alloc * sizeof *ops->out);
-	}
-	return &ops->out[ops->len++];
-}
-
-bf_op* build_bf_tree(blob_cursor *restrict input, bool expecting_bracket, size_t *out_len) {
-	bf_op_builder ops;
-	ops.alloc = 16;
-	ops.len = 0;
-	ops.out = malloc(ops.alloc * sizeof *ops.out);
-
-	while (input->pos < input->len) {
-		unsigned char c = input->data[input->pos++];
-		switch (c) {
+static void alloc_op_by_char(unsigned char op_char, bf_op_builder *builder) {
+	bool need_alloc = true;
+	if (builder->out.len != 0) {
+		bf_op *last = &builder->out.ops[builder->out.len - 1];
+		switch (op_char) {
 			case '+':
 			case '-':
-				if (ops.len == 0
-						|| (ops.out[ops.len - 1].op_type != BF_OP_ALTER
-							&& ops.out[ops.len - 1].op_type != BF_OP_SET)) {
-new_alter:
-					*alloc_bf_op(&ops) = (bf_op){
-						.op_type = BF_OP_ALTER,
-						.offset = 0,
-						.amount = 0,
-					};
-				}
+				if (last->op_type == BF_OP_ALTER || last->op_type == BF_OP_SET)
+					need_alloc = false;
 				break;
 			case '>':
 			case '<':
-				if (ops.len == 0
-						|| ops.out[ops.len - 1].op_type != BF_OP_ALTER
-						|| ops.out[ops.len - 1].amount != 0) {
-					goto new_alter;
-				}
-				break;
-			case '.':
-			case ',':
-			case '[':
-				*alloc_bf_op(&ops) = (bf_op){
-					.op_type = op_type_for_char[c],
-				};
+				if (last->op_type == BF_OP_ALTER && last->amount == 0)
+					need_alloc = false;
 				break;
 		}
+	}
+	if (op_char == ']')
+		need_alloc = false;
+	if (need_alloc)
+		*alloc_bf_op(builder) = (bf_op){
+			.op_type = op_type_for_char[op_char],
+		};
+}
 
-		bf_op *op = &ops.out[ops.len - 1];
+bf_op* build_bf_tree(blob_cursor *restrict input, bool expecting_bracket, size_t *out_len) {
+	bf_op_builder builder;
+	builder.alloc = 16;
+	builder.out.len = 0;
+	builder.out.ops = malloc(builder.alloc * sizeof *builder.out.ops);
+
+	while (input->pos < input->len) {
+		unsigned char c = input->data[input->pos++];
+		if (op_type_for_char[c] == BF_OP_INVALID)
+			continue;
+
+		alloc_op_by_char(c, &builder);
+
+		bf_op *op = &builder.out.ops[builder.out.len - 1];
 		switch (c) {
 			case '+':
 				op->amount++;
@@ -75,8 +67,8 @@ new_alter:
 				op->offset--;
 				break;
 			case '[':
-				op->child_op = build_bf_tree(input, true, &op->child_op_count);
-				optimize_loop(&ops);
+				op->children.ops = build_bf_tree(input, true, &op->children.len);
+				optimize_loop(&builder);
 				break;
 			case ']':
 				if (!expecting_bracket) errx(1, "Unexpected end of loop");
@@ -85,12 +77,12 @@ new_alter:
 	}
 
 end:
-	*out_len = ops.len;
-	if (ops.len == 0) {
-		free(ops.out);
-		ops.out = NULL;
+	*out_len = builder.out.len;
+	if (builder.out.len == 0) {
+		free(builder.out.ops);
+		builder.out.ops = NULL;
 	} else {
-		ops.out = realloc(ops.out, ops.len * sizeof *ops.out);
+		builder.out.ops = realloc(builder.out.ops, builder.out.len * sizeof *builder.out.ops);
 	}
-	return ops.out;
+	return builder.out.ops;
 }

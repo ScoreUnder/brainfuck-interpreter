@@ -12,10 +12,10 @@
 bool is_loop_alter_only(bf_op *restrict op) {
 	assert(op != NULL);
 	assert(op->op_type == BF_OP_LOOP);
-	assert(op->child_op_count == 0 || op->child_op != NULL);
+	assert(op->children.len == 0 || op->children.ops != NULL);
 
-	for (size_t i = 0; i < op->child_op_count; i++)
-		if (op->child_op[i].op_type != BF_OP_ALTER)
+	for (size_t i = 0; i < op->children.len; i++)
+		if (op->children.ops[i].op_type != BF_OP_ALTER)
 			return false;
 
 	return true;
@@ -24,50 +24,40 @@ bool is_loop_alter_only(bf_op *restrict op) {
 void make_offsets_absolute(bf_op *restrict op) {
 	assert(op != NULL);
 	assert(op->op_type == BF_OP_LOOP);
-	assert(op->child_op_count == 0 || op->child_op != NULL);
+	assert(op->children.len == 0 || op->children.ops != NULL);
 
 	ssize_t current_offset = 0;
-	for (size_t i = 0; i < op->child_op_count; i++) {
-		assert(op->child_op[i].op_type == BF_OP_ALTER);
+	for (size_t i = 0; i < op->children.len; i++) {
+		bf_op *curr_op = &op->children.ops[i];
+		assert(curr_op->op_type == BF_OP_ALTER);
 
-		current_offset += op->child_op[i].offset;
-		op->child_op[i].offset = current_offset;
+		current_offset += curr_op->offset;
+		curr_op->offset = current_offset;
 	}
 }
 
 void make_offsets_relative(bf_op *restrict op) {
 	assert(op != NULL);
 	assert(op->op_type == BF_OP_LOOP);
-	assert(op->child_op_count == 0 || op->child_op != NULL);
+	assert(op->children.len == 0 || op->children.ops != NULL);
 
 	ssize_t current_offset = 0;
-	for (size_t i = 0; i < op->child_op_count; i++) {
-		assert(op->child_op[i].op_type == BF_OP_ALTER);
+	for (size_t i = 0; i < op->children.len; i++) {
+		bf_op *curr_op = &op->children.ops[i];
+		assert(curr_op->op_type == BF_OP_ALTER);
 
-		op->child_op[i].offset -= current_offset;
-		current_offset += op->child_op[i].offset;
+		curr_op->offset -= current_offset;
+		current_offset += curr_op->offset;
 	}
-}
-
-void remove_bf_ops(bf_op_builder *ops, size_t index, size_t count) {
-	memmove(ops->out + index, ops->out + index + count,
-			(ops->len - index - count) * sizeof *ops->out);
-	ops->len -= count;
-}
-
-void remove_child_ops(bf_op *op, size_t index, size_t count) {
-	memmove(op->child_op + index, op->child_op + index + count,
-			(op->child_op_count - index - count) * sizeof *op->child_op);
-	op->child_op_count -= count;
 }
 
 bool make_loop_into_multiply(bf_op_builder *ops) {
 	assert(ops != NULL);
-	assert(ops->out != NULL);
-	assert(ops->len > 0);
+	assert(ops->out.ops != NULL);
+	assert(ops->out.len > 0);
 
-	size_t my_op_index = ops->len - 1;
-	bf_op *op = &ops->out[my_op_index];
+	size_t my_op_index = ops->out.len - 1;
+	bf_op *op = &ops->out.ops[my_op_index];
 
 	assert(op->op_type == BF_OP_LOOP);
 
@@ -75,7 +65,7 @@ bool make_loop_into_multiply(bf_op_builder *ops) {
 
 	make_offsets_absolute(op);
 
-	if (op->child_op[op->child_op_count - 1].offset != 0) {
+	if (op->children.ops[op->children.len - 1].offset != 0) {
 		// "unbalanced" loop, don't change it
 error:
 		make_offsets_relative(op);
@@ -84,24 +74,24 @@ error:
 
 	// ensure the loop variable decreases by one each time
 	cell_int loop_increment = 0;
-	for (size_t i = 0; i < op->child_op_count; i++)
-		if (op->child_op[i].offset == 0)
-			loop_increment += op->child_op[i].amount;
+	for (size_t i = 0; i < op->children.len; i++)
+		if (op->children.ops[i].offset == 0)
+			loop_increment += op->children.ops[i].amount;
 
 	if (loop_increment != (cell_int)-1) goto error;
 
 	// Go along finding and removing all alter ops with the same offset
-	while (op->child_op_count) {
-		ssize_t target_offset = op->child_op[0].offset;
-		cell_int final_amount = op->child_op[0].amount;
+	while (op->children.len) {
+		ssize_t target_offset = op->children.ops[0].offset;
+		cell_int final_amount = op->children.ops[0].amount;
 
-		remove_child_ops(op, 0, 1);
-		for (size_t i = 0; i < op->child_op_count; i++) {
-			if (op->child_op[i].offset != target_offset)
+		remove_bf_ops(&op->children, 0, 1);
+		for (size_t i = 0; i < op->children.len; i++) {
+			if (op->children.ops[i].offset != target_offset)
 				continue;
 
-			final_amount += op->child_op[i].amount;
-			remove_child_ops(op, i--, 1);
+			final_amount += op->children.ops[i].amount;
+			remove_bf_ops(&op->children, i--, 1);
 		}
 
 		if (target_offset != 0) {
@@ -113,8 +103,8 @@ error:
 		}
 	}
 
-	free(op->child_op);
-	remove_bf_ops(ops, my_op_index, 1);
+	free(op->children.ops);
+	remove_bf_ops(&ops->out, my_op_index, 1);
 
 	*alloc_bf_op(ops) = (bf_op) {
 		.op_type = BF_OP_SET,
@@ -125,23 +115,23 @@ error:
 }
 
 void optimize_loop(bf_op_builder *ops) {
-	bf_op *op = &ops->out[ops->len - 1];
+	bf_op *op = &ops->out.ops[ops->out.len - 1];
 	// Shite optimizations
-	if (op->child_op_count == 1
-			&& op->child_op[0].op_type == BF_OP_ALTER
-			&& op->child_op[0].amount == 0) {
-		ssize_t offset = op->child_op[0].offset;
-		free(op->child_op);
+	if (op->children.len == 1
+			&& op->children.ops[0].op_type == BF_OP_ALTER
+			&& op->children.ops[0].amount == 0) {
+		ssize_t offset = op->children.ops[0].offset;
+		free(op->children.ops);
 		op->op_type = BF_OP_SKIP;
 		op->offset = offset;
-	} else if (op->child_op_count == 2
-			&& op->child_op[0].op_type == BF_OP_ALTER
-			&& op->child_op[1].op_type == BF_OP_ALTER
-			&& op->child_op[0].offset == -op->child_op[1].offset
-			&& op->child_op[1].amount == (cell_int)-1) {
-		ssize_t offset = op->child_op[0].offset;
-		cell_int scalar = op->child_op[0].amount;
-		free(op->child_op);
+	} else if (op->children.len == 2
+			&& op->children.ops[0].op_type == BF_OP_ALTER
+			&& op->children.ops[1].op_type == BF_OP_ALTER
+			&& op->children.ops[0].offset == -op->children.ops[1].offset
+			&& op->children.ops[1].amount == (cell_int)-1) {
+		ssize_t offset = op->children.ops[0].offset;
+		cell_int scalar = op->children.ops[0].amount;
+		free(op->children.ops);
 		op->op_type = BF_OP_MULTIPLY;
 		op->offset = offset;
 		op->amount = scalar;

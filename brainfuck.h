@@ -5,7 +5,8 @@
 #include <sys/types.h>
 #include <stdlib.h>
 
-enum {
+enum bf_op_type {
+	BF_OP_INVALID = 0,
 	BF_OP_ALTER, BF_OP_IN, BF_OP_OUT, BF_OP_LOOP,
 	// Pseudo-ops
 	BF_OP_ONCE,
@@ -15,22 +16,34 @@ enum {
 
 typedef int8_t cell_int;
 
+struct s_bf_op;
+
+typedef struct s_bf_op_array {
+	struct s_bf_op *ops;
+	size_t len;
+} bf_op_array;
+
 typedef struct s_bf_op {
-	unsigned int op_type;
+	enum bf_op_type op_type;
 #ifndef NDEBUG
 	unsigned int count;
 	uint64_t time;
 #endif
 	union {
-		struct {
-			size_t child_op_count;
-			struct s_bf_op *child_op;
-		};
+		bf_op_array children;
 		struct {
 			ssize_t offset;
 			cell_int amount;
 		};
 	};
 } bf_op;
+
+typedef struct {
+	bf_op_array out;
+	size_t alloc;
+} bf_op_builder;
+
+bf_op* alloc_bf_op(bf_op_builder *ops);
+void remove_bf_ops(bf_op_array *arr, size_t index, size_t count);
 
 #endif
