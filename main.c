@@ -10,6 +10,7 @@
 #include<err.h>
 
 #include "parser.h"
+#include "flattener.h"
 
 struct {
 	size_t size;
@@ -42,75 +43,107 @@ void tape_ensure_space(ssize_t pos) {
 	}
 }
 
-void execute(bf_op *op) {
+void execute(char *what) {
 #define CELL *(tape.pos >= 0 ? &tape.cells[tape.pos] : &tape.back_cells[-1 - tape.pos])
-	switch (op->op_type) {
-		case BF_OP_ONCE:
-			for (size_t i = 0; i < op->children.len; i++)
-				execute(op->children.ops + i);
-			break;
+	while (true) {
+		switch (*what++) {
+			case BF_OP_ALTER: {
+				ssize_t offset = *(ssize_t*)what;
+				what += sizeof(ssize_t);
+				cell_int amount = *(cell_int*)what;
+				what += sizeof(cell_int);
 
-		case BF_OP_ALTER:
-			tape.pos += op->offset;
-			tape_ensure_space(tape.pos);
-			CELL += op->amount;
-			break;
-
-		case BF_OP_SET:
-			CELL = op->amount;
-			break;
-
-		case BF_OP_MULTIPLY: {
-			cell_int orig = CELL;
-			if (orig == 0) break;
-			tape.pos += op->offset;
-			tape_ensure_space(tape.pos);
-			CELL += orig * op->amount;
-			tape.pos -= op->offset;
-			break;
-		}
-
-		case BF_OP_IN: {
-			int input = getchar();
-			if (input == EOF && sizeof(cell_int) == 1) input = 0;
-			CELL = input;
-			break;
-		}
-
-		case BF_OP_OUT:
-			putchar(CELL);
-			break;
-
-		case BF_OP_LOOP: {
-#ifndef NDEBUG
-			uint32_t hi, lo;
-			__asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
-			uint64_t start = ((uint64_t)hi << 32) | ((uint64_t)lo);
-#endif
-			while (CELL != 0) {
-				for (size_t i = 0; i < op->children.len; i++)
-					execute(op->children.ops + i);
-#ifndef NDEBUG
-				op->count++;
-#endif
-			}
-#ifndef NDEBUG
-			__asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
-			uint64_t end = ((uint64_t)hi << 32) | ((uint64_t)lo);
-			op->time += end - start;
-#endif
-			break;
-		}
-
-		case BF_OP_SKIP:
-			while (CELL != 0) {
-				tape.pos += op->offset;
+				tape.pos += offset;
 				tape_ensure_space(tape.pos);
+				CELL += amount;
+				break;
 			}
-			break;
 
-		default:
-			errx(1, "Invalid internal state");
+			case BF_OP_ALTER_MOVEONLY: {
+				ssize_t offset = *(ssize_t*)what;
+				what += sizeof(ssize_t);
+
+				tape.pos += offset;
+				tape_ensure_space(tape.pos);
+				break;
+			}
+
+			case BF_OP_ALTER_ADDONLY: {
+				cell_int amount = *(cell_int*)what;
+				what += sizeof(cell_int);
+
+				CELL += amount;
+				break;
+			}
+
+			case BF_OP_SET: {
+				cell_int amount = *(cell_int*)what;
+				what += sizeof(cell_int);
+
+				CELL = amount;
+				break;
+			}
+
+			case BF_OP_MULTIPLY: {
+				ssize_t offset = *(ssize_t*)what;
+				what += sizeof(ssize_t);
+				cell_int amount = *(cell_int*)what;
+				what += sizeof(cell_int);
+
+				cell_int orig = CELL;
+				if (orig == 0) break;
+				tape.pos += offset;
+				tape_ensure_space(tape.pos);
+				CELL += orig * amount;
+				tape.pos -= offset;
+				break;
+			}
+
+			case BF_OP_IN: {
+				int input = getchar();
+				if (input == EOF && sizeof(cell_int) == 1) input = 0;
+				CELL = input;
+				break;
+			}
+
+			case BF_OP_OUT:
+				putchar(CELL);
+				break;
+
+
+			case BF_OP_SKIP: {
+				ssize_t offset = *(ssize_t*)what;
+				what += sizeof(ssize_t);
+
+				while (CELL != 0) {
+					tape.pos += offset;
+					tape_ensure_space(tape.pos);
+				}
+				break;
+			}
+
+			case BF_OP_JUMPIFZERO: {
+				ssize_t offset = *(ssize_t*)what;
+				what += sizeof(ssize_t);
+				if (CELL == 0) {
+					what += offset;
+				}
+				break;
+			}
+
+			case BF_OP_JUMP: {
+				ssize_t offset = *(ssize_t*)what;
+				what += sizeof(ssize_t);
+				what += offset;
+				break;
+			}
+
+			case BF_OP_DIE:
+				return;
+
+			default:
+				errx(1, "Invalid internal state");
+		}
 	}
 #undef CELL
 }
@@ -215,11 +248,15 @@ int main(int argc, char **argv){
 	print_bf_op(&root, 0);
 	printf("\n\n");
 #endif
-	execute(&root);
-#ifndef NDEBUG
-	printf("\n\n");
-	print_bf_op(&root, 0);
-#endif
+
+	blob_cursor flat = {
+		.data = malloc(128),
+		.pos = 0,
+		.len = 128,
+	};
+	flatten_bf(&root, &flat);
+
+	execute(flat.data);
 
 	munmap(map, size);
 	close(fd);
