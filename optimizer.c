@@ -125,17 +125,6 @@ void optimize_loop(bf_op_builder *ops) {
 		free(op->children.ops);
 		op->op_type = BF_OP_SKIP;
 		op->offset = offset;
-	} else if (op->children.len == 2
-			&& op->children.ops[0].op_type == BF_OP_ALTER
-			&& op->children.ops[1].op_type == BF_OP_ALTER
-			&& op->children.ops[0].offset == -op->children.ops[1].offset
-			&& op->children.ops[1].amount == (cell_int)-1) {
-		ssize_t offset = op->children.ops[0].offset;
-		cell_int scalar = op->children.ops[0].amount;
-		free(op->children.ops);
-		op->op_type = BF_OP_MULTIPLY;
-		op->offset = offset;
-		op->amount = scalar;
 	} else if (make_loop_into_multiply(ops)) {
 		return;
 	}
