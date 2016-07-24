@@ -17,8 +17,10 @@ typedef int8_t cell_int;
 
 typedef struct s_bf_op {
 	unsigned int op_type;
+#ifndef NDEBUG
 	unsigned int count;
 	uint64_t time;
+#endif
 	union {
 		struct {
 			size_t child_op_count;

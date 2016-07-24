@@ -82,17 +82,23 @@ void execute(bf_op *op) {
 			break;
 
 		case BF_OP_LOOP: {
+#ifndef NDEBUG
 			uint32_t hi, lo;
 			__asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
 			uint64_t start = ((uint64_t)hi << 32) | ((uint64_t)lo);
+#endif
 			while (CELL != 0) {
 				for (size_t i = 0; i < op->child_op_count; i++)
 					execute(op->child_op + i);
+#ifndef NDEBUG
 				op->count++;
+#endif
 			}
+#ifndef NDEBUG
 			__asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
 			uint64_t end = ((uint64_t)hi << 32) | ((uint64_t)lo);
 			op->time += end - start;
+#endif
 			break;
 		}
 
@@ -109,11 +115,12 @@ void execute(bf_op *op) {
 #undef CELL
 }
 
-void print(bf_op *op, int indent) {
+#ifndef NDEBUG
+void print_bf_op(bf_op *op, int indent) {
 	switch (op->op_type) {
 		case BF_OP_ONCE:
 			for (size_t i = 0; i < op->child_op_count; i++)
-				print(op->child_op + i, indent);
+				print_bf_op(op->child_op + i, indent);
 			break;
 
 		case BF_OP_ALTER:
@@ -150,7 +157,7 @@ void print(bf_op *op, int indent) {
 		case BF_OP_LOOP:
 			printf("[\n%*s", indent += 2, "");
 			for (size_t i = 0; i < op->child_op_count; i++)
-				print(op->child_op + i, indent);
+				print_bf_op(op->child_op + i, indent);
 			indent -= 2;
 			printf("\n%*s] (%u @ %lu - %lf per)\n%*s", indent, "", op->count, op->time, (double)op->time / op->count, indent, "");
 			break;
@@ -163,6 +170,7 @@ void print(bf_op *op, int indent) {
 			errx(1, "Invalid internal state");
 	}
 }
+#endif
 
 /*
  * + (*data)++
@@ -196,11 +204,15 @@ int main(int argc, char **argv){
 	bf_op root = {.op_type = BF_OP_ONCE};
 	root.child_op = build_bf_tree(&(blob_cursor){.data = map, .len = size}, false, &root.child_op_count);
 
-	print(&root, 0);
+#ifndef NDEBUG
+	print_bf_op(&root, 0);
 	printf("\n\n");
+#endif
 	execute(&root);
+#ifndef NDEBUG
 	printf("\n\n");
-	print(&root, 0);
+	print_bf_op(&root, 0);
+#endif
 
 	munmap(map, size);
 	close(fd);
