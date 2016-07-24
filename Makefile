@@ -1,5 +1,6 @@
 CC = gcc
 CFLAGS = -Ofast -g3 -march=native -flto -std=c11 -Wall -Wextra -pedantic #-fprofile-use #-fprofile-generate
+CPPFLAGS = -DNDEBUG
 LDFLAGS = -fwhole-program
 TARGET = brainfuck
 
