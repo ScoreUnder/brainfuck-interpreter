@@ -100,6 +100,7 @@ error:
 				.offset = target_offset,
 				.amount = final_amount,
 			};
+			op = &ops->out.ops[my_op_index];
 		}
 	}
 
