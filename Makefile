@@ -5,14 +5,6 @@ TARGET = brainfuck
 
 all: $(TARGET)
 
-# GCC-only things:
-optimizer.o: optimizer.gch
-parser.o: parser.gch
-
-%.gch: %.h
-	gcc -o $@ $<
-# END GCC-only things
-
 $(TARGET): main.o optimizer.o parser.o
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@
 
