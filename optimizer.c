@@ -61,6 +61,9 @@ int get_loop_balance(bf_op *restrict op) {
 		uncertainty |= UNCERTAIN_FORWARDS;
 	else if (balance < 0)
 		uncertainty |= UNCERTAIN_BACKWARDS;
+#ifndef NDEBUG
+	op->uncertainty = uncertainty;
+#endif
 	return uncertainty;
 }
 

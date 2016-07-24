@@ -199,17 +199,14 @@ void print_bf_op(bf_op *op, int indent) {
 
 		case BF_OP_LOOP:
 			printf("[\n%*s", indent += 2, "");
-			uint64_t selftime = op->time;
 			for (size_t i = 0; i < op->children.len; i++) {
 				print_bf_op(op->children.ops + i, indent);
-				if (op->children.ops[i].op_type == BF_OP_LOOP)
-					selftime -= op->children.ops[i].time;
 			}
 			indent -= 2;
-			if (op->time || op->count)
-				printf("\n%*s] (%u @ %lu - %.2lf per, %.2lf self per)\n%*s", indent, "", op->count, op->time, (double)op->time / op->count, (double)selftime / op->count, indent, "");
-			else
-				printf("\n%*s]\n%*s", indent, "", indent, "");
+			printf("\n%*s] (uncertainties: ", indent, "");
+			if (op->uncertainty & 2) putchar('<');
+			if (op->uncertainty & 1) putchar('>');
+			printf(")\n%*s", indent, "");
 			break;
 
 		case BF_OP_SKIP:

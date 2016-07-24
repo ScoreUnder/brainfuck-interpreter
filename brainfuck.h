@@ -29,9 +29,9 @@ typedef struct s_bf_op_array {
 typedef struct s_bf_op {
 	enum bf_op_type op_type;
 #ifndef NDEBUG
-	unsigned int count;
-	uint64_t time;
+	int uncertainty;
 #endif
+
 	union {
 		bf_op_array children;
 		struct {
