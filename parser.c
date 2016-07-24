@@ -82,7 +82,7 @@ end:
 		free(builder.out.ops);
 		builder.out.ops = NULL;
 	} else {
-		builder.out.ops = realloc(builder.out.ops, builder.out.len * sizeof *builder.out.ops);
+		builder.out.ops = realloc(builder.out.ops, builder.out.len * sizeof *builder.out.ops + 2); // HACK: +2 to make the job easier for the bounds checker later
 	}
 	return builder.out.ops;
 }

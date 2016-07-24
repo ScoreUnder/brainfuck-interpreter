@@ -21,6 +21,53 @@ bool is_loop_alter_only(bf_op *restrict op) {
 	return true;
 }
 
+/*
+ * Returns:
+ *  0 if the loop does not end up moving the data pointer
+ *  1 if the loop moves it forwards by some degree
+ * -1 if the loop moves it backwards by some degree
+ *  2 if it's impossible to tell
+ */
+int get_loop_balance(bf_op *restrict op) {
+	assert(op != NULL);
+	assert(op->op_type == BF_OP_LOOP);
+	assert(op->children.len == 0 || op->children.ops != NULL);
+
+	ssize_t balance = 0;
+	bool indeterminate_forwards = false,
+	     indeterminate_backwards = false;
+
+	for (size_t i = 0; i < op->children.len; i++) {
+		bf_op *child = &op->children.ops[i];
+		if (child->op_type == BF_OP_ALTER)
+			balance += child->offset;
+		else if (child->op_type == BF_OP_SKIP) {
+			assert(child->offset != 0);
+			if (child->offset > 0)
+				indeterminate_forwards = true;
+			else
+				indeterminate_backwards = true;
+
+			if (indeterminate_backwards && indeterminate_forwards) return 2;
+		} else if (child->op_type == BF_OP_LOOP) {
+			int loop_balance = get_loop_balance(child);
+			if (loop_balance == 2) return 2;
+			else if (loop_balance == 1) indeterminate_forwards = true;
+			else if (loop_balance == -1) indeterminate_backwards = true;
+
+			if (indeterminate_backwards && indeterminate_forwards) return 2;
+		}
+	}
+
+	assert(!indeterminate_forwards || !indeterminate_backwards);
+	if (balance == 0)
+		return 0;
+	else if (balance > 0)
+		return 1;
+	else
+		return -1;
+}
+
 void make_offsets_absolute(bf_op *restrict op) {
 	assert(op != NULL);
 	assert(op->op_type == BF_OP_LOOP);
@@ -130,6 +177,48 @@ void optimize_loop(bf_op_builder *ops) {
 	}
 }
 
+static void make_bound_check(bf_op_builder *ops, size_t pos, ssize_t bound) {
+	*insert_bf_op(ops, pos) = (bf_op) {
+		.op_type = BF_OP_BOUNDS_CHECK,
+		.offset = bound,
+	};
+}
+
+static size_t check_for_bound_check(bf_op_array *ops_arr, size_t index, int direction) {
+	assert(direction == 1 || direction == -1);
+
+	for (size_t j = index; j < ops_arr->len && j < index + 2; j++) {
+		bf_op *op = &ops_arr->ops[j];
+		if (op->op_type == BF_OP_BOUNDS_CHECK
+				&& ((op->offset < 0 && direction == -1)
+					|| (op->offset > 0 && direction == 1)))
+			return j;
+	}
+	return (size_t) -1;
+}
+
+static void pull_bound_check(bf_op_builder *ops, size_t *call_op_index, size_t i, size_t *end_pos, int direction) {
+	bf_op *op = &ops->out.ops[*call_op_index];
+	assert(op->op_type == BF_OP_LOOP);
+	size_t inner_bound_check = check_for_bound_check(&op->children, 0, direction);
+	if (inner_bound_check != (size_t)-1) {
+		// Bounds check found, find somewhere to put it (or make that place)
+
+		size_t bound_check = check_for_bound_check(&ops->out, i, direction);
+		if (bound_check == (size_t)-1) {
+			make_bound_check(ops, i, 0);
+			(*end_pos)++;
+			(*call_op_index)++;
+
+			op = &ops->out.ops[*call_op_index]; // we moved due to make_bound_check's realloc and memmove
+
+			bound_check = i;
+		}
+		ops->out.ops[bound_check].offset += op->children.ops[inner_bound_check].offset;
+		remove_bf_ops(&op->children, inner_bound_check, 1);
+	}
+}
+
 void add_bounds_checks(bf_op_builder *ops) {
 	assert(ops != NULL);
 	if (ops->out.len == 0)
@@ -161,27 +250,20 @@ void add_bounds_checks(bf_op_builder *ops) {
 		}
 
 		if (max_bound) {
-			*insert_bf_op(ops, i) = (bf_op) {
-				.op_type = BF_OP_BOUNDS_CHECK,
-				.offset = max_bound,
-			};
+			make_bound_check(ops, i, max_bound);
 			end_pos++;
 		}
 		if (min_bound) {
-			*insert_bf_op(ops, i) = (bf_op) {
-				.op_type = BF_OP_BOUNDS_CHECK,
-				.offset = min_bound,
-			};
+			make_bound_check(ops, i, min_bound);
 			end_pos++;
 		}
-
-		i = end_pos;
 
 		assert(end_pos <= ops->out.len);
 		if (end_pos >= ops->out.len)
 			break;
 
-		bf_op *op = &ops->out.ops[i++];
+		size_t this_op_pos = end_pos++;
+		bf_op *op = &ops->out.ops[this_op_pos];
 		if (op->op_type == BF_OP_LOOP) {
 			// Playing with fire...
 			// Wrap op children in a reallocatable structure
@@ -191,7 +273,28 @@ void add_bounds_checks(bf_op_builder *ops) {
 			};
 			add_bounds_checks(&builder);
 			op->children = builder.out;
+
+			// Serious hacks round 2: pull bounds checks from the beginning of the loop
+			int loop_balance = get_loop_balance(op);
+			bool pull_backwards = false,
+			     pull_forwards = false;
+
+			if (loop_balance == 1)
+				pull_backwards = true;
+			else if (loop_balance == -1)
+				pull_forwards = true;
+			else if (loop_balance == 0)
+				pull_backwards = pull_forwards = true;
+
+			if (pull_backwards) {
+				pull_bound_check(ops, &this_op_pos, i, &end_pos, -1);
+			}
+			if (pull_forwards) {
+				pull_bound_check(ops, &this_op_pos, i, &end_pos, 1);
+			}
 		}
+
+		i = end_pos;
 	}
 	ops->out.ops = realloc(ops->out.ops, ops->out.len * sizeof *ops->out.ops);
 }
