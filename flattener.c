@@ -76,9 +76,10 @@ void flatten_bf(bf_op *op, blob_cursor *out) {
 			out->pos += sizeof(cell_int);
 			break;
 
+		case BF_OP_BOUNDS_CHECK:
 		case BF_OP_SKIP:
 			blob_ensure_extra(out, sizeof(ssize_t) + 1);
-			out->data[out->pos++] = BF_OP_SKIP;
+			out->data[out->pos++] = op->op_type;
 			*(ssize_t*)&out->data[out->pos] = op->offset;
 			out->pos += sizeof(ssize_t);
 			break;

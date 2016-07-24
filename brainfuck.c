@@ -19,6 +19,20 @@ bf_op* alloc_bf_op(bf_op_builder *ops) {
 	return &ops->out.ops[ops->out.len++];
 }
 
+bf_op* insert_bf_op(bf_op_builder *ops, size_t index) {
+	assert(ops != NULL);
+	assert(ops->out.ops != NULL);
+	assert(ops->alloc != 0);
+
+	if (ops->out.len == ops->alloc) {
+		ops->alloc *= 2;
+		ops->out.ops = realloc(ops->out.ops, ops->alloc * sizeof *ops->out.ops);
+	}
+	memmove(ops->out.ops + index + 1, ops->out.ops + index, (ops->out.len - index) * sizeof *ops->out.ops);
+	ops->out.len++;
+	return &ops->out.ops[index];
+}
+
 void remove_bf_ops(bf_op_array *arr, size_t index, size_t count) {
 	assert(arr != NULL);
 	assert(arr->ops != NULL);
