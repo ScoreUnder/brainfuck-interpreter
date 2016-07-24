@@ -21,12 +21,15 @@ bool is_loop_alter_only(bf_op *restrict op) {
 	return true;
 }
 
+#define UNCERTAIN_FORWARDS  1
+#define UNCERTAIN_BACKWARDS 2
+#define UNCERTAIN_BOTH      3
 /*
  * Returns:
- *  0 if the loop does not end up moving the data pointer
- *  1 if the loop moves it forwards by some degree
- * -1 if the loop moves it backwards by some degree
- *  2 if it's impossible to tell
+ * 0                   if the loop does not end up moving the data pointer
+ * UNCERTAIN_FORWARDS  if the loop moves it forwards by some degree
+ * UNCERTAIN_BACKWARDS if the loop moves it backwards by some degree
+ * UNCERTAIN_BOTH      if it's impossible to tell
  */
 int get_loop_balance(bf_op *restrict op) {
 	assert(op != NULL);
@@ -34,8 +37,7 @@ int get_loop_balance(bf_op *restrict op) {
 	assert(op->children.len == 0 || op->children.ops != NULL);
 
 	ssize_t balance = 0;
-	bool indeterminate_forwards = false,
-	     indeterminate_backwards = false;
+	int uncertainty = 0;
 
 	for (size_t i = 0; i < op->children.len; i++) {
 		bf_op *child = &op->children.ops[i];
@@ -44,28 +46,24 @@ int get_loop_balance(bf_op *restrict op) {
 		else if (child->op_type == BF_OP_SKIP) {
 			assert(child->offset != 0);
 			if (child->offset > 0)
-				indeterminate_forwards = true;
+				uncertainty |= UNCERTAIN_FORWARDS;
 			else
-				indeterminate_backwards = true;
+				uncertainty |= UNCERTAIN_BACKWARDS;
 
-			if (indeterminate_backwards && indeterminate_forwards) return 2;
+			if (uncertainty == UNCERTAIN_BOTH) return 2;
 		} else if (child->op_type == BF_OP_LOOP) {
-			int loop_balance = get_loop_balance(child);
-			if (loop_balance == 2) return 2;
-			else if (loop_balance == 1) indeterminate_forwards = true;
-			else if (loop_balance == -1) indeterminate_backwards = true;
-
-			if (indeterminate_backwards && indeterminate_forwards) return 2;
+			uncertainty |= get_loop_balance(child);
+			if (uncertainty == UNCERTAIN_BOTH) return 2;
 		}
 	}
 
-	assert(!indeterminate_forwards || !indeterminate_backwards);
+	assert(uncertainty != UNCERTAIN_BOTH);
 	if (balance == 0)
 		return 0;
 	else if (balance > 0)
-		return 1;
+		return UNCERTAIN_FORWARDS;
 	else
-		return -1;
+		return UNCERTAIN_BACKWARDS;
 }
 
 void make_offsets_absolute(bf_op *restrict op) {
@@ -275,21 +273,12 @@ void add_bounds_checks(bf_op_builder *ops) {
 			op->children = builder.out;
 
 			// Serious hacks round 2: pull bounds checks from the beginning of the loop
-			int loop_balance = get_loop_balance(op);
-			bool pull_backwards = false,
-			     pull_forwards = false;
+			int uncertainty = get_loop_balance(op);
 
-			if (loop_balance == 1)
-				pull_backwards = true;
-			else if (loop_balance == -1)
-				pull_forwards = true;
-			else if (loop_balance == 0)
-				pull_backwards = pull_forwards = true;
-
-			if (pull_backwards) {
+			if ((uncertainty & UNCERTAIN_BACKWARDS) == 0) {
 				pull_bound_check(ops, &this_op_pos, i, &end_pos, -1);
 			}
-			if (pull_forwards) {
+			if ((uncertainty & UNCERTAIN_FORWARDS) == 0) {
 				pull_bound_check(ops, &this_op_pos, i, &end_pos, 1);
 			}
 		}
