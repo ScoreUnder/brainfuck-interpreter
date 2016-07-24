@@ -67,7 +67,6 @@ void execute(bf_op *op) {
 			tape_ensure_space(tape.pos);
 			CELL += orig * op->amount;
 			tape.pos -= op->offset;
-			CELL = 0;
 			break;
 		}
 
@@ -194,9 +193,8 @@ int main(int argc, char **argv){
 	tape.back_size = 16;
 	tape.back_cells = calloc(sizeof *tape.back_cells, tape.back_size);
 
-	size_t pos = 0;
 	bf_op root = {.op_type = BF_OP_ONCE};
-	root.child_op = build_bf_tree(map, &pos, size, false, &root.child_op_count);
+	root.child_op = build_bf_tree(&(blob_cursor){.data = map, .len = size}, false, &root.child_op_count);
 
 	print(&root, 0);
 	printf("\n\n");
