@@ -50,20 +50,18 @@ int get_loop_balance(bf_op *restrict op) {
 			else
 				uncertainty |= UNCERTAIN_BACKWARDS;
 
-			if (uncertainty == UNCERTAIN_BOTH) return 2;
+			if (uncertainty == UNCERTAIN_BOTH) break;
 		} else if (child->op_type == BF_OP_LOOP) {
 			uncertainty |= get_loop_balance(child);
-			if (uncertainty == UNCERTAIN_BOTH) return 2;
+			if (uncertainty == UNCERTAIN_BOTH) break;
 		}
 	}
 
-	assert(uncertainty != UNCERTAIN_BOTH);
-	if (balance == 0)
-		return 0;
-	else if (balance > 0)
-		return UNCERTAIN_FORWARDS;
-	else
-		return UNCERTAIN_BACKWARDS;
+	if (balance > 0)
+		uncertainty |= UNCERTAIN_FORWARDS;
+	else if (balance < 0)
+		uncertainty |= UNCERTAIN_BACKWARDS;
+	return uncertainty;
 }
 
 void make_offsets_absolute(bf_op *restrict op) {
