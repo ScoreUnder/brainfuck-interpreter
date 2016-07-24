@@ -10,6 +10,7 @@
 #include<err.h>
 
 #include "parser.h"
+#include "optimizer.h"
 
 struct {
 	size_t size;
@@ -50,9 +51,12 @@ void execute(bf_op *op) {
 				execute(op->children.ops + i);
 			break;
 
+		case BF_OP_BOUNDS_CHECK:
+			tape_ensure_space(tape.pos + op->offset);
+			break;
+
 		case BF_OP_ALTER:
 			tape.pos += op->offset;
-			tape_ensure_space(tape.pos);
 			CELL += op->amount;
 			break;
 
@@ -64,7 +68,6 @@ void execute(bf_op *op) {
 			cell_int orig = CELL;
 			if (orig == 0) break;
 			tape.pos += op->offset;
-			tape_ensure_space(tape.pos);
 			CELL += orig * op->amount;
 			tape.pos -= op->offset;
 			break;
@@ -121,6 +124,10 @@ void print_bf_op(bf_op *op, int indent) {
 		case BF_OP_ONCE:
 			for (size_t i = 0; i < op->children.len; i++)
 				print_bf_op(op->children.ops + i, indent);
+			break;
+
+		case BF_OP_BOUNDS_CHECK:
+			printf("BOUND[%d] ", (int)op->offset);
 			break;
 
 		case BF_OP_ALTER:
@@ -210,6 +217,10 @@ int main(int argc, char **argv){
 
 	bf_op root = {.op_type = BF_OP_ONCE};
 	root.children.ops = build_bf_tree(&(blob_cursor){.data = map, .len = size}, false, &root.children.len);
+
+	bf_op_builder builder = {.out = root.children, .alloc = root.children.len};
+	add_bounds_checks(&builder);
+	root.children = builder.out;
 
 #ifndef NDEBUG
 	print_bf_op(&root, 0);

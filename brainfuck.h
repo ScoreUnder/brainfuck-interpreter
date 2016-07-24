@@ -9,7 +9,7 @@ enum bf_op_type {
 	BF_OP_INVALID = 0,
 	BF_OP_ALTER, BF_OP_IN, BF_OP_OUT, BF_OP_LOOP,
 	// Pseudo-ops
-	BF_OP_ONCE,
+	BF_OP_ONCE, BF_OP_BOUNDS_CHECK,
 	// Optimized ops
 	BF_OP_SET, BF_OP_MULTIPLY, BF_OP_SKIP,
 };
@@ -44,6 +44,7 @@ typedef struct {
 } bf_op_builder;
 
 bf_op* alloc_bf_op(bf_op_builder *ops);
+bf_op* insert_bf_op(bf_op_builder *ops, size_t index);
 void remove_bf_ops(bf_op_array *arr, size_t index, size_t count);
 
 #endif

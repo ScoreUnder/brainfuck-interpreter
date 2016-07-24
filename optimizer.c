@@ -129,3 +129,65 @@ void optimize_loop(bf_op_builder *ops) {
 		return;
 	}
 }
+
+void add_bounds_checks(bf_op_builder *ops) {
+	assert(ops != NULL);
+	if (ops->out.len == 0)
+		return;
+
+	assert(ops->out.ops != NULL);
+
+	for (size_t i = 0; i < ops->out.len;) {
+		ssize_t max_bound = 0, min_bound = 0, current_offset = 0;
+		size_t end_pos = i;
+		while (end_pos < ops->out.len) {
+			bf_op *op = &ops->out.ops[end_pos];
+			if (op->op_type == BF_OP_LOOP || op->op_type == BF_OP_SKIP)
+				break;
+
+			if (op->op_type == BF_OP_ALTER || op->op_type == BF_OP_MULTIPLY)
+				current_offset += op->offset;
+
+			if (current_offset < min_bound)
+				min_bound = current_offset;
+			else if (current_offset > max_bound)
+				max_bound = current_offset;
+
+			end_pos++;
+		}
+
+		if (max_bound) {
+			*insert_bf_op(ops, i) = (bf_op) {
+				.op_type = BF_OP_BOUNDS_CHECK,
+				.offset = max_bound,
+			};
+			end_pos++;
+		}
+		if (min_bound) {
+			*insert_bf_op(ops, i) = (bf_op) {
+				.op_type = BF_OP_BOUNDS_CHECK,
+				.offset = min_bound,
+			};
+			end_pos++;
+		}
+
+		i = end_pos;
+
+		assert(end_pos <= ops->out.len);
+		if (end_pos >= ops->out.len)
+			break;
+
+		bf_op *op = &ops->out.ops[i++];
+		if (op->op_type == BF_OP_LOOP) {
+			// Playing with fire...
+			// Wrap op children in a reallocatable structure
+			bf_op_builder builder = {
+				.out = op->children,
+				.alloc = op->children.len,
+			};
+			add_bounds_checks(&builder);
+			op->children = builder.out;
+		}
+	}
+	ops->out.ops = realloc(ops->out.ops, ops->out.len * sizeof *ops->out.ops);
+}

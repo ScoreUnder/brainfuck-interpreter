@@ -5,5 +5,6 @@
 #include "parser.h"
 
 void optimize_loop(bf_op_builder *ops);
+void add_bounds_checks(bf_op_builder *ops);
 
 #endif
