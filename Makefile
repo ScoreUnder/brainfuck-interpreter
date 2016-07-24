@@ -8,7 +8,12 @@ all: $(TARGET)
 $(TARGET): main.o optimizer.o parser.o
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@
 
+%.o: %.c
+	$(CC) $(CFLAGS) $(CPPFLAGS) -MMD -c -o $@ $<
+
 clean:
-	rm -f -- $(TARGET) *.o *.gch
+	rm -f -- $(TARGET) *.o *.gch *.d
+
+-include *.d
 
 .PHONY: all clean

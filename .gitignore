@@ -3,3 +3,4 @@ brainfuck
 *.gcda
 *.gch
 *.swp
+*.d
