@@ -13,7 +13,7 @@ $(TARGET): main.o optimizer.o parser.o brainfuck.o flattener.o
 	$(CC) $(CFLAGS) $(CPPFLAGS) -MMD -c -o $@ $<
 
 clean:
-	rm -f -- $(TARGET) *.o *.gch *.d
+	rm -f -- $(TARGET) *.o *.gch *.gcda *.d
 
 -include *.d
 
