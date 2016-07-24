@@ -153,6 +153,10 @@ void add_bounds_checks(bf_op_builder *ops) {
 			else if (current_offset > max_bound)
 				max_bound = current_offset;
 
+			if (op->op_type == BF_OP_MULTIPLY)
+				// Revert offset again, as the instruction does
+				current_offset -= op->offset;
+
 			end_pos++;
 		}
 
