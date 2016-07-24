@@ -163,7 +163,10 @@ void print_bf_op(bf_op *op, int indent) {
 					selftime -= op->children.ops[i].time;
 			}
 			indent -= 2;
-			printf("\n%*s] (%u @ %lu - %.2lf per, %.2lf self per)\n%*s", indent, "", op->count, op->time, (double)op->time / op->count, (double)selftime / op->count, indent, "");
+			if (op->time || op->count)
+				printf("\n%*s] (%u @ %lu - %.2lf per, %.2lf self per)\n%*s", indent, "", op->count, op->time, (double)op->time / op->count, (double)selftime / op->count, indent, "");
+			else
+				printf("\n%*s]\n%*s", indent, "", indent, "");
 			break;
 
 		case BF_OP_SKIP:
