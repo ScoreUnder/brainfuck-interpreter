@@ -262,6 +262,7 @@ static size_t pull_bound_check(bf_op_builder *ops, size_t *call_op_index, size_t
 	return shift;
 }
 
+#ifndef NDEBUG
 static bool have_bound_at(bf_op_array *arr, size_t where, int direction) {
 	if ((ssize_t) where < 0) return false;
 	assert(where < arr->len);
@@ -277,6 +278,7 @@ static bool have_bound_at(bf_op_array *arr, size_t where, int direction) {
 	}
 	return false;
 }
+#endif
 
 void add_bounds_checks(bf_op_builder *ops) {
 	assert(ops != NULL);
