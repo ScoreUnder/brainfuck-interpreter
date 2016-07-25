@@ -44,7 +44,7 @@ static ssize_t flatten_bf_internal(bf_op *op, blob_cursor *out, ssize_t previous
 			for (size_t i = 0; i < op->children.len; i++)
 				previous_op = flatten_bf_internal(&op->children.ops[i], out, previous_op);
 
-			if (out->data[previous_op] != BF_OP_JUMPIFNONZERO) {
+			if (previous_op == -1 || out->data[previous_op] != BF_OP_JUMPIFNONZERO) {
 				blob_ensure_extra(out, sizeof(ssize_t) + 1);
 				op_start = out->pos; // Some things might want to merge with our JNZ
 				out->data[out->pos++] = BF_OP_JUMPIFNONZERO;
@@ -58,7 +58,7 @@ static ssize_t flatten_bf_internal(bf_op *op, blob_cursor *out, ssize_t previous
 			ssize_t jump_distance = out->pos - loop_start - 1 - sizeof(ssize_t);
 			*(ssize_t*)&out->data[loop_start + 1] = jump_distance;
 
-			if (out->data[previous_op] != BF_OP_JUMPIFNONZERO) {
+			if (previous_op == -1 || out->data[previous_op] != BF_OP_JUMPIFNONZERO) {
 				// On the nonzero jump, skip all jump-if-zeros because they will never fire
 				while (out->data[out->pos - jump_distance] == BF_OP_JUMPIFZERO) {
 					jump_distance -= sizeof(ssize_t) + 1;
