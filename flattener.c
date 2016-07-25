@@ -65,10 +65,17 @@ static ssize_t flatten_bf_internal(bf_op *op, blob_cursor *out, ssize_t previous
 		}
 
 		case BF_OP_SET:
-			blob_ensure_extra(out, sizeof(cell_int) + 1);
-			out->data[out->pos++] = BF_OP_SET;
-			*(cell_int*)&out->data[out->pos] = op->amount;
-			out->pos += sizeof(cell_int);
+			if (previous_op != -1 && out->data[previous_op] == BF_OP_MULTIPLY) {
+				blob_ensure_extra(out, sizeof(cell_int));
+				*(cell_int*)&out->data[out->pos] = op->amount;
+				out->pos += sizeof(cell_int);
+				return -1;
+			} else {
+				blob_ensure_extra(out, sizeof(cell_int) + 1);
+				out->data[out->pos++] = BF_OP_SET;
+				*(cell_int*)&out->data[out->pos] = op->amount;
+				out->pos += sizeof(cell_int);
+			}
 			break;
 
 		case BF_OP_MULTIPLY:

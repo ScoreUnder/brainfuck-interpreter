@@ -98,14 +98,6 @@ void execute(char *what) {
 				break;
 			}
 
-			case BF_OP_SET: {
-				cell_int amount = *(cell_int*)what;
-				what += sizeof(cell_int);
-
-				CELL = amount;
-				break;
-			}
-
 			case BF_OP_MULTIPLY: {
 				uint8_t repeat = *(uint8_t*)what;
 				what++;
@@ -124,6 +116,15 @@ void execute(char *what) {
 					CELL += orig * amount;
 					tape.pos -= offset;
 				} while (repeat--);
+
+				// Fallthrough to set
+			}
+
+			case BF_OP_SET: {
+				cell_int amount = *(cell_int*)what;
+				what += sizeof(cell_int);
+
+				CELL = amount;
 				break;
 			}
 
