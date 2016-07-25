@@ -287,7 +287,7 @@ int main(int argc, char **argv){
 	size_t size = (size_t) lseek(fd, 0, SEEK_END);
 	if (size == (size_t)-1) err(1, "Can't seek file %s", filename);
 	char *map = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
-	if (map == NULL) err(1, "Can't mmap file %s", filename);
+	if (map == MAP_FAILED) err(1, "Can't mmap file %s", filename);
 
 	tape.pos = 0;
 #ifndef FIXED_TAPE_SIZE
