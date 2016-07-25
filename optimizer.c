@@ -211,14 +211,18 @@ static size_t check_for_bound_check(bf_op_array *ops_arr, size_t index, int dire
 	return (size_t) -1;
 }
 
-static size_t reuse_or_make_bound_check(bf_op_builder *ops, size_t index, int bound) {
+static size_t reuse_or_make_bound_check(bf_op_builder *ops, size_t index, int bound, int direction) {
 	assert(bound != 0);
 	size_t bound_check = check_for_bound_check(&ops->out, index, bound > 0 ? 1 : -1);
 	if (bound_check == (size_t) -1) {
 		make_bound_check(ops, index, bound);
 		return 1;
 	} else {
-		ops->out.ops[bound_check].offset += bound;
+		bf_op *bound_check_op = &ops->out.ops[bound_check];
+		if ((bound > bound_check_op->offset && direction > 0)
+				|| (bound < bound_check_op->offset && direction < 0)) {
+			bound_check_op->offset = bound;
+		}
 		return 0;
 	}
 }
@@ -230,23 +234,28 @@ static size_t pull_bound_check(bf_op_builder *ops, size_t *call_op_index, size_t
 	size_t inner_bound_check = check_for_bound_check(&op->children, 0, direction);
 	if (inner_bound_check != (size_t)-1) {
 		ssize_t inner_bound_offset = op->children.ops[inner_bound_check].offset + current_offset;
-		if (inner_bound_offset == 0) return 0;
 		// Bounds check found, find somewhere to put it (or make that place)
-		size_t bound_check = check_for_bound_check(&ops->out, i, direction);
-		if (bound_check == (size_t)-1) {
-			make_bound_check(ops, i, 0);
-			shift = 1;
-			(*call_op_index)++;
+		if ((inner_bound_offset > 0 && direction > 0)
+				|| (inner_bound_offset < 0 && direction < 0)) {
+			// The bounds check may need to be created or updated
+			size_t bound_check = check_for_bound_check(&ops->out, i, direction);
+			if (bound_check == (size_t)-1) {
+				make_bound_check(ops, i, inner_bound_offset);
+				shift = 1;
+				(*call_op_index)++;
 
-			op = &ops->out.ops[*call_op_index]; // we moved due to make_bound_check's realloc and memmove
+				op = &ops->out.ops[*call_op_index]; // we moved due to make_bound_check's realloc and memmove
 
-			bound_check = i;
-		}
-		bf_op *restrict bound_op = &ops->out.ops[bound_check];
-		if ((bound_op->offset > 0 && inner_bound_offset > bound_op->offset)
-				|| (bound_op->offset < 0 && inner_bound_offset < bound_op->offset)) {
-			bound_op->offset = inner_bound_offset;
-			assert(bound_op->offset != 0);
+				bound_check = i;
+			}
+			bf_op *restrict bound_op = &ops->out.ops[bound_check];
+			assert((bound_op->offset > 0 && direction > 0)
+					|| (bound_op->offset < 0 && direction < 0));
+			if ((direction > 0 && inner_bound_offset > bound_op->offset)
+					|| (direction < 0 && inner_bound_offset < bound_op->offset)) {
+				bound_op->offset = inner_bound_offset;
+				assert(bound_op->offset != 0);
+			}
 		}
 		remove_bf_ops(&op->children, inner_bound_check, 1);
 	}
@@ -293,13 +302,13 @@ void add_bounds_checks(bf_op_builder *ops) {
 		}
 
 		if (max_bound) {
-			size_t shift = reuse_or_make_bound_check(ops, last_certain_forwards, max_bound);
+			size_t shift = reuse_or_make_bound_check(ops, last_certain_forwards, max_bound, 1);
 			end_pos += shift;
 			if (last_certain_backwards > last_certain_forwards)
 				last_certain_backwards += shift;
 		}
 		if (min_bound) {
-			size_t shift = reuse_or_make_bound_check(ops, last_certain_backwards, min_bound);
+			size_t shift = reuse_or_make_bound_check(ops, last_certain_backwards, min_bound, -1);
 			end_pos += shift;
 			if (last_certain_forwards > last_certain_backwards)
 				last_certain_forwards += shift;
