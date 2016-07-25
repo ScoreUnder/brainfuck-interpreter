@@ -165,7 +165,20 @@ error:
 
 void optimize_loop(bf_op_builder *ops) {
 	bf_op *op = &ops->out.ops[ops->out.len - 1];
-	// Shite optimizations
+	// Peephole optimizations that can't be done during build time
+	for (size_t i = 0; i < op->children.len; i++) {
+		bf_op *child = &op->children.ops[i];
+		if (child->op_type == BF_OP_ALTER
+				&& child->offset == 0 && child->amount == 0)
+			remove_bf_ops(&op->children, i--, 1);
+		else if (child->op_type == BF_OP_MULTIPLY && child->offset == 0) {
+			child->op_type = BF_OP_LOOP;
+			child->children.ops = NULL;
+			child->children.len = 0;
+		}
+	}
+
+	// Find common types of loop
 	if (op->children.len == 1
 			&& op->children.ops[0].op_type == BF_OP_ALTER
 			&& op->children.ops[0].amount == 0) {
