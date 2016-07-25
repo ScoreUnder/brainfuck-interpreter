@@ -262,6 +262,22 @@ static size_t pull_bound_check(bf_op_builder *ops, size_t *call_op_index, size_t
 	return shift;
 }
 
+static bool have_bound_at(bf_op_array *arr, size_t where, int direction) {
+	if ((ssize_t) where < 0) return false;
+	assert(where < arr->len);
+
+	bf_op *op = &arr->ops[where];
+	if (op->op_type == BF_OP_BOUNDS_CHECK) {
+		assert(op->offset != 0);
+		if (op->offset < 0) {
+			return direction < 0;
+		} else {
+			return direction > 0;
+		}
+	}
+	return false;
+}
+
 void add_bounds_checks(bf_op_builder *ops) {
 	assert(ops != NULL);
 	if (ops->out.len == 0)
@@ -302,16 +318,20 @@ void add_bounds_checks(bf_op_builder *ops) {
 		}
 
 		if (max_bound) {
+			assert(!have_bound_at(&ops->out, last_certain_forwards - 1, 1));
 			size_t shift = reuse_or_make_bound_check(ops, last_certain_forwards, max_bound, 1);
 			end_pos += shift;
 			if (last_certain_backwards > last_certain_forwards)
 				last_certain_backwards += shift;
+			assert(!have_bound_at(&ops->out, last_certain_forwards - 1, 1));
 		}
 		if (min_bound) {
+			assert(!have_bound_at(&ops->out, last_certain_backwards - 1, -1));
 			size_t shift = reuse_or_make_bound_check(ops, last_certain_backwards, min_bound, -1);
 			end_pos += shift;
 			if (last_certain_forwards > last_certain_backwards)
 				last_certain_forwards += shift;
+			assert(!have_bound_at(&ops->out, last_certain_backwards - 1, -1));
 		}
 
 		assert(end_pos <= ops->out.len);
@@ -333,6 +353,7 @@ void add_bounds_checks(bf_op_builder *ops) {
 			// Serious hacks round 2: pull bounds checks from the beginning of the loop
 			int uncertainty = get_loop_balance(op);
 
+			assert(!have_bound_at(&ops->out, last_certain_backwards - 1, -1));
 			if ((uncertainty & UNCERTAIN_BACKWARDS) == 0) {
 				size_t shift = pull_bound_check(ops, &this_op_pos, last_certain_backwards, curr_off_bck, -1);
 				end_pos += shift;
@@ -342,7 +363,9 @@ void add_bounds_checks(bf_op_builder *ops) {
 				last_certain_backwards = end_pos;
 				curr_off_bck = 0;
 			}
+			assert(!have_bound_at(&ops->out, last_certain_backwards - 1, -1));
 
+			assert(!have_bound_at(&ops->out, last_certain_forwards - 1, 1));
 			if ((uncertainty & UNCERTAIN_FORWARDS) == 0) {
 				size_t shift = pull_bound_check(ops, &this_op_pos, last_certain_forwards, curr_off_fwd, 1);
 				end_pos += shift;
@@ -352,6 +375,7 @@ void add_bounds_checks(bf_op_builder *ops) {
 				last_certain_forwards = end_pos;
 				curr_off_fwd = 0;
 			}
+			assert(!have_bound_at(&ops->out, last_certain_forwards - 1, 1));
 		} else if (op->op_type == BF_OP_SKIP) {
 			if (op->offset > 0) {
 				last_certain_forwards = end_pos;
