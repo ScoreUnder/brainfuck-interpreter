@@ -24,6 +24,7 @@ bool is_loop_alter_only(bf_op *restrict op) {
 #define UNCERTAIN_FORWARDS  1
 #define UNCERTAIN_BACKWARDS 2
 #define UNCERTAIN_BOTH      3
+#define UNCERTAINTY_PRESENT 4
 /*
  * Returns:
  * 0                   if the loop does not end up moving the data pointer
@@ -36,8 +37,11 @@ int get_loop_balance(bf_op *restrict op) {
 	assert(op->op_type == BF_OP_LOOP);
 	assert(op->children.len == 0 || op->children.ops != NULL);
 
+	int uncertainty = op->uncertainty;
+	if (uncertainty)
+		return uncertainty & UNCERTAIN_BOTH;
+
 	ssize_t balance = 0;
-	int uncertainty = 0;
 
 	for (size_t i = 0; i < op->children.len; i++) {
 		bf_op *child = &op->children.ops[i];
@@ -61,9 +65,7 @@ int get_loop_balance(bf_op *restrict op) {
 		uncertainty |= UNCERTAIN_FORWARDS;
 	else if (balance < 0)
 		uncertainty |= UNCERTAIN_BACKWARDS;
-#ifndef NDEBUG
-	op->uncertainty = uncertainty;
-#endif
+	op->uncertainty = uncertainty | UNCERTAINTY_PRESENT;
 	return uncertainty;
 }
 
