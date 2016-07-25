@@ -4,6 +4,9 @@ CPPFLAGS = -DNDEBUG
 LDFLAGS = -fwhole-program
 TARGET = brainfuck
 
+#CFLAGS += -fwrapv
+#CPPFLAGS += -DFIXED_TAPE_SIZE=uint16_t
+
 all: $(TARGET)
 
 $(TARGET): main.o optimizer.o parser.o brainfuck.o flattener.o

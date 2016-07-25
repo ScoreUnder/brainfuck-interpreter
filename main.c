@@ -13,6 +13,12 @@
 #include "flattener.h"
 #include "optimizer.h"
 
+#ifdef FIXED_TAPE_SIZE
+struct {
+	FIXED_TAPE_SIZE pos;
+	cell_int *cells;
+} tape;
+#else
 struct {
 	size_t size;
 	size_t back_size;
@@ -20,8 +26,10 @@ struct {
 	cell_int *cells;
 	cell_int *back_cells;
 } tape;
+#endif
 
-void tape_ensure_space(ssize_t pos) {
+#ifndef FIXED_TAPE_SIZE
+static void tape_ensure_space(ssize_t pos) {
 	if (pos >= 0) {
 		if (tape.size <= (size_t) pos) {
 			size_t old_size = tape.size;
@@ -43,9 +51,14 @@ void tape_ensure_space(ssize_t pos) {
 		}
 	}
 }
+#endif
 
 void execute(char *what) {
+#ifdef FIXED_TAPE_SIZE
+#define CELL tape.cells[tape.pos]
+#else
 #define CELL *(tape.pos >= 0 ? &tape.cells[tape.pos] : &tape.back_cells[-1 - tape.pos])
+#endif
 	while (true) {
 		switch (*what++) {
 			case BF_OP_ALTER: {
@@ -59,6 +72,7 @@ void execute(char *what) {
 				break;
 			}
 
+#ifndef FIXED_TAPE_SIZE
 			case BF_OP_BOUNDS_CHECK: {
 				ssize_t offset = *(ssize_t*)what;
 				what += sizeof(ssize_t);
@@ -66,6 +80,7 @@ void execute(char *what) {
 				tape_ensure_space(tape.pos + offset);
 				break;
 			}
+#endif
 
 			case BF_OP_ALTER_MOVEONLY: {
 				ssize_t offset = *(ssize_t*)what;
@@ -123,7 +138,9 @@ void execute(char *what) {
 
 				while (CELL != 0) {
 					tape.pos += offset;
+#ifndef FIXED_TAPE_SIZE
 					tape_ensure_space(tape.pos);
+#endif
 				}
 				break;
 			}
@@ -164,9 +181,11 @@ void print_bf_op(bf_op *op, int indent) {
 				print_bf_op(op->children.ops + i, indent);
 			break;
 
+#ifndef FIXED_TAPE_SIZE
 		case BF_OP_BOUNDS_CHECK:
 			printf("BOUND[%d] ", (int)op->offset);
 			break;
+#endif
 
 		case BF_OP_ALTER:
 			if (op->offset > 0)
@@ -263,17 +282,23 @@ int main(int argc, char **argv){
 	if (map == NULL) err(1, "Can't mmap file %s", filename);
 
 	tape.pos = 0;
+#ifndef FIXED_TAPE_SIZE
 	tape.size = 16;
 	tape.cells = calloc(sizeof *tape.cells, tape.size);
 	tape.back_size = 16;
 	tape.back_cells = calloc(sizeof *tape.back_cells, tape.back_size);
+#else
+	tape.cells = calloc(sizeof *tape.cells, (size_t)256 << sizeof(FIXED_TAPE_SIZE));
+#endif
 
 	bf_op root = {.op_type = BF_OP_ONCE};
 	root.children.ops = build_bf_tree(&(blob_cursor){.data = map, .len = size}, false, &root.children.len);
 
+#ifndef FIXED_TAPE_SIZE
 	bf_op_builder builder = {.out = root.children, .alloc = root.children.len};
 	add_bounds_checks(&builder);
 	root.children = builder.out;
+#endif
 
 #ifndef NDEBUG
 	print_bf_op(&root, 0);
