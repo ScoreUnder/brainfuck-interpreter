@@ -43,13 +43,13 @@ void flatten_bf(bf_op *op, blob_cursor *out) {
 				flatten_bf(&op->children.ops[i], out);
 
 			blob_ensure_extra(out, sizeof(ssize_t) + 1);
-			out->data[out->pos++] = BF_OP_JUMP;
+			out->data[out->pos++] = BF_OP_JUMPIFNONZERO;
 			out->pos += sizeof(ssize_t);
 
 			// Difference between end of first jump instruction and here
-			*(ssize_t*)&out->data[loop_start + 1] = out->pos - loop_start - 1 - sizeof(ssize_t);
-			// Difference between here and start of first jump instruction
-			*(ssize_t*)&out->data[out->pos - sizeof(ssize_t)] = loop_start - out->pos;
+			ssize_t jump_distance = out->pos - loop_start - 1 - sizeof(ssize_t);
+			*(ssize_t*)&out->data[loop_start + 1] = jump_distance;
+			*(ssize_t*)&out->data[out->pos - sizeof(ssize_t)] = -jump_distance;
 			break;
 
 		case BF_OP_ONCE:

@@ -14,7 +14,7 @@ enum bf_op_type {
 	BF_OP_SET, BF_OP_MULTIPLY, BF_OP_SKIP,
 	// Flattened optimized ops
 	BF_OP_ALTER_MOVEONLY, BF_OP_ALTER_ADDONLY,
-	BF_OP_JUMP, BF_OP_JUMPIFZERO, BF_OP_DIE,
+	BF_OP_JUMPIFNONZERO, BF_OP_JUMPIFZERO, BF_OP_DIE,
 };
 
 typedef int8_t cell_int;

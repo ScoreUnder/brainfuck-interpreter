@@ -137,10 +137,12 @@ void execute(char *what) {
 				break;
 			}
 
-			case BF_OP_JUMP: {
+			case BF_OP_JUMPIFNONZERO: {
 				ssize_t offset = *(ssize_t*)what;
 				what += sizeof(ssize_t);
-				what += offset;
+				if (CELL != 0) {
+					what += offset;
+				}
 				break;
 			}
 
