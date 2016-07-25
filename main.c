@@ -107,16 +107,23 @@ void execute(char *what) {
 			}
 
 			case BF_OP_MULTIPLY: {
-				ssize_t offset = *(ssize_t*)what;
-				what += sizeof(ssize_t);
-				cell_int amount = *(cell_int*)what;
-				what += sizeof(cell_int);
+				uint8_t repeat = *(uint8_t*)what;
+				what++;
+				do {
+					ssize_t offset = *(ssize_t*)what;
+					what += sizeof(ssize_t);
+					cell_int amount = *(cell_int*)what;
+					what += sizeof(cell_int);
 
-				cell_int orig = CELL;
-				if (orig == 0) break;
-				tape.pos += offset;
-				CELL += orig * amount;
-				tape.pos -= offset;
+					cell_int orig = CELL;
+					if (orig == 0) {
+						what += (sizeof(ssize_t) + sizeof(cell_int)) * repeat;
+						break;
+					}
+					tape.pos += offset;
+					CELL += orig * amount;
+					tape.pos -= offset;
+				} while (repeat--);
 				break;
 			}
 
