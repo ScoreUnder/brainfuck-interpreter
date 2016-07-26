@@ -4,6 +4,7 @@ CPPFLAGS = -DNDEBUG
 LDFLAGS = -fwhole-program
 TARGET = brainfuck
 
+# Uncomment to use a fixed-size tape which wraps around at the ends
 #CFLAGS += -fwrapv
 #CPPFLAGS += -DFIXED_TAPE_SIZE=uint16_t
 
