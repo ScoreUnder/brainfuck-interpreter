@@ -16,15 +16,15 @@
 #ifdef FIXED_TAPE_SIZE
 struct {
 	FIXED_TAPE_SIZE pos;
-	cell_int *cells;
+	cell_int *restrict cells;
 } tape;
 #else
 struct {
 	size_t size;
 	size_t back_size;
 	ssize_t pos;
-	cell_int *cells;
-	cell_int *back_cells;
+	cell_int *restrict cells;
+	cell_int *restrict back_cells;
 } tape;
 #endif
 
@@ -57,7 +57,7 @@ static void tape_ensure_space(ssize_t pos) {
 ssize_t bound_upper = 0, bound_lower = 0;
 #endif
 
-void execute(char *what) {
+void execute(char *restrict what) {
 #ifdef FIXED_TAPE_SIZE
 #define CELL tape.cells[tape.pos]
 #else
