@@ -14,47 +14,43 @@
 #include "optimizer.h"
 
 #ifdef FIXED_TAPE_SIZE
-struct {
+typedef struct {
 	FIXED_TAPE_SIZE pos;
 	cell_int *restrict cells;
-} tape;
+} tape_struct;
 #else
-struct {
+typedef struct {
 	size_t size;
 	size_t back_size;
 	ssize_t pos;
 	cell_int *restrict cells;
 	cell_int *restrict back_cells;
-} tape;
+} tape_struct;
 #endif
 
 #ifndef FIXED_TAPE_SIZE
-static void tape_ensure_space(ssize_t pos) {
+static void tape_ensure_space(tape_struct *tape, ssize_t pos) {
 	if (pos >= 0) {
-		if (tape.size <= (size_t) pos) {
-			size_t old_size = tape.size;
-			while (tape.size <= (size_t) pos) {
-				tape.size *= 2;
+		if (tape->size <= (size_t) pos) {
+			size_t old_size = tape->size;
+			while (tape->size <= (size_t) pos) {
+				tape->size *= 2;
 			}
-			tape.cells = realloc(tape.cells, tape.size * sizeof *tape.cells);
-			memset(tape.cells + old_size, 0, tape.size - old_size);
+			tape->cells = realloc(tape->cells, tape->size * sizeof *tape->cells);
+			memset(tape->cells + old_size, 0, tape->size - old_size);
 		}
 	} else {
 		pos = -pos;
-		if (tape.back_size < (size_t)pos) {
-			size_t old_size = tape.back_size;
-			while (tape.back_size < (size_t)pos) {
-				tape.back_size *= 2;
+		if (tape->back_size < (size_t)pos) {
+			size_t old_size = tape->back_size;
+			while (tape->back_size < (size_t)pos) {
+				tape->back_size *= 2;
 			}
-			tape.back_cells = realloc(tape.back_cells, tape.back_size * sizeof *tape.back_cells);
-			memset(tape.back_cells + old_size, 0, tape.back_size - old_size);
+			tape->back_cells = realloc(tape->back_cells, tape->back_size * sizeof *tape->back_cells);
+			memset(tape->back_cells + old_size, 0, tape->back_size - old_size);
 		}
 	}
 }
-#endif
-
-#if !defined(NDEBUG) && !defined(FIXED_TAPE_SIZE)
-ssize_t bound_upper = 0, bound_lower = 0;
 #endif
 
 void execute(char *restrict what) {
@@ -63,6 +59,25 @@ void execute(char *restrict what) {
 #else
 #define CELL *(tape.pos >= 0 ? &tape.cells[tape.pos] : &tape.back_cells[-1 - tape.pos])
 #endif
+
+#if !defined(NDEBUG) && !defined(FIXED_TAPE_SIZE)
+	ssize_t bound_upper = 0, bound_lower = 0;
+#endif
+
+	tape_struct tape = {
+		.pos = 0,
+#ifndef FIXED_TAPE_SIZE
+		.size = 16,
+		.back_size = 16,
+#endif
+	};
+#ifdef FIXED_TAPE_SIZE
+	tape.cells = calloc(sizeof *tape.cells, (size_t)256 << sizeof(FIXED_TAPE_SIZE));
+#else
+	tape.cells = calloc(sizeof *tape.cells, tape.size);
+	tape.back_cells = calloc(sizeof *tape.back_cells, tape.back_size);
+#endif
+
 	while (true) {
 #if !defined(NDEBUG) && !defined(FIXED_TAPE_SIZE)
 		if (tape.pos < bound_lower || tape.pos > bound_upper)
@@ -93,7 +108,7 @@ void execute(char *restrict what) {
 				}
 #endif
 
-				tape_ensure_space(tape.pos + offset);
+				tape_ensure_space(&tape, tape.pos + offset);
 				break;
 			}
 #endif
@@ -163,7 +178,7 @@ void execute(char *restrict what) {
 				while (CELL != 0) {
 					tape.pos += offset;
 #ifndef FIXED_TAPE_SIZE
-					tape_ensure_space(tape.pos);
+					tape_ensure_space(&tape, tape.pos);
 #endif
 				}
 
@@ -311,16 +326,6 @@ int main(int argc, char **argv){
 	if (size == (size_t)-1) err(1, "Can't seek file %s", filename);
 	char *map = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
 	if (map == MAP_FAILED) err(1, "Can't mmap file %s", filename);
-
-	tape.pos = 0;
-#ifndef FIXED_TAPE_SIZE
-	tape.size = 16;
-	tape.cells = calloc(sizeof *tape.cells, tape.size);
-	tape.back_size = 16;
-	tape.back_cells = calloc(sizeof *tape.back_cells, tape.back_size);
-#else
-	tape.cells = calloc(sizeof *tape.cells, (size_t)256 << sizeof(FIXED_TAPE_SIZE));
-#endif
 
 	bf_op root = {.op_type = BF_OP_ONCE};
 	root.children.ops = build_bf_tree(&(blob_cursor){.data = map, .len = size}, false, &root.children.len);
