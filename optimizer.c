@@ -346,7 +346,10 @@ void add_bounds_checks(bf_op_builder *ops) {
 			// Playing with fire...
 			// Wrap op children in a reallocatable structure
 			bf_op_builder builder = {
-				.out = op->children,
+				.out = {
+					.ops = op->children.ops,
+					.len = op->children.len,
+				},
 				.alloc = op->children.len,
 			};
 			add_bounds_checks(&builder);

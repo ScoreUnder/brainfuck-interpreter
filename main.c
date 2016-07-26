@@ -331,7 +331,13 @@ int main(int argc, char **argv){
 	root.children.ops = build_bf_tree(&(blob_cursor){.data = map, .len = size}, false, &root.children.len);
 
 #ifndef FIXED_TAPE_SIZE
-	bf_op_builder builder = {.out = root.children, .alloc = root.children.len};
+	bf_op_builder builder = {
+		.out = {
+			.ops = root.children.ops,
+			.len = root.children.len,
+		},
+		.alloc = root.children.len,
+	};
 	add_bounds_checks(&builder);
 	root.children = builder.out;
 #endif
