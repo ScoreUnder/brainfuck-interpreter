@@ -53,6 +53,10 @@ static void tape_ensure_space(ssize_t pos) {
 }
 #endif
 
+#ifndef NDEBUG
+ssize_t bound_upper = 0, bound_lower = 0;
+#endif
+
 void execute(char *what) {
 #ifdef FIXED_TAPE_SIZE
 #define CELL tape.cells[tape.pos]
@@ -60,6 +64,10 @@ void execute(char *what) {
 #define CELL *(tape.pos >= 0 ? &tape.cells[tape.pos] : &tape.back_cells[-1 - tape.pos])
 #endif
 	while (true) {
+#ifndef NDEBUG
+		if (tape.pos < bound_lower || tape.pos > bound_upper)
+			errx(2, "Bounds check failure\n");
+#endif
 		switch (*what++) {
 			case BF_OP_ALTER: {
 				ssize_t offset = *(ssize_t*)what;
@@ -76,6 +84,14 @@ void execute(char *what) {
 			case BF_OP_BOUNDS_CHECK: {
 				ssize_t offset = *(ssize_t*)what;
 				what += sizeof(ssize_t);
+
+#ifndef NDEBUG
+				if (offset < 0) {
+					bound_lower = tape.pos + offset;
+				} else {
+					bound_upper = tape.pos + offset;
+				}
+#endif
 
 				tape_ensure_space(tape.pos + offset);
 				break;
@@ -150,6 +166,13 @@ void execute(char *what) {
 					tape_ensure_space(tape.pos);
 #endif
 				}
+
+#ifndef NDEBUG
+				if (offset < 0)
+					bound_lower = tape.pos;
+				else
+					bound_upper = tape.pos;
+#endif
 				break;
 			}
 
