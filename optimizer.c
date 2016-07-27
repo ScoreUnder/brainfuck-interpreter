@@ -291,12 +291,11 @@ void add_bounds_checks(bf_op_builder *ops) {
 
 	ssize_t curr_off_fwd = 0; // Current offset since last forwards uncertainty
 	ssize_t curr_off_bck = 0;
-	for (size_t i = 0; i < ops->out.len;) {
+	for (size_t pos = 0; pos < ops->out.len;) {
 		ssize_t max_bound = 0, min_bound = 0;
-		size_t end_pos = i;
 
-		while (end_pos < ops->out.len) {
-			bf_op *op = &ops->out.ops[end_pos];
+		while (pos < ops->out.len) {
+			bf_op *op = &ops->out.ops[pos];
 			if (op->op_type == BF_OP_LOOP || op->op_type == BF_OP_SKIP)
 				break;
 
@@ -316,13 +315,13 @@ void add_bounds_checks(bf_op_builder *ops) {
 				curr_off_bck -= op->offset;
 			}
 
-			end_pos++;
+			pos++;
 		}
 
 		if (max_bound) {
 			assert(!have_bound_at(&ops->out, last_certain_forwards - 1, 1));
 			size_t shift = reuse_or_make_bound_check(ops, last_certain_forwards, max_bound, 1);
-			end_pos += shift;
+			pos += shift;
 			if (last_certain_backwards > last_certain_forwards)
 				last_certain_backwards += shift;
 			assert(!have_bound_at(&ops->out, last_certain_forwards - 1, 1));
@@ -330,17 +329,17 @@ void add_bounds_checks(bf_op_builder *ops) {
 		if (min_bound) {
 			assert(!have_bound_at(&ops->out, last_certain_backwards - 1, -1));
 			size_t shift = reuse_or_make_bound_check(ops, last_certain_backwards, min_bound, -1);
-			end_pos += shift;
+			pos += shift;
 			if (last_certain_forwards > last_certain_backwards)
 				last_certain_forwards += shift;
 			assert(!have_bound_at(&ops->out, last_certain_backwards - 1, -1));
 		}
 
-		assert(end_pos <= ops->out.len);
-		if (end_pos >= ops->out.len)
+		assert(pos <= ops->out.len);
+		if (pos >= ops->out.len)
 			break;
 
-		size_t this_op_pos = end_pos++;
+		size_t this_op_pos = pos++;
 		bf_op *op = &ops->out.ops[this_op_pos];
 		if (op->op_type == BF_OP_LOOP) {
 			// Playing with fire...
@@ -361,11 +360,11 @@ void add_bounds_checks(bf_op_builder *ops) {
 			assert(!have_bound_at(&ops->out, last_certain_backwards - 1, -1));
 			if ((uncertainty & UNCERTAIN_BACKWARDS) == 0) {
 				size_t shift = pull_bound_check(ops, &this_op_pos, last_certain_backwards, curr_off_bck, -1);
-				end_pos += shift;
+				pos += shift;
 				if (last_certain_forwards > last_certain_backwards)
 					last_certain_forwards += shift;
 			} else {
-				last_certain_backwards = end_pos;
+				last_certain_backwards = pos;
 				curr_off_bck = 0;
 			}
 			assert(!have_bound_at(&ops->out, last_certain_backwards - 1, -1));
@@ -373,25 +372,23 @@ void add_bounds_checks(bf_op_builder *ops) {
 			assert(!have_bound_at(&ops->out, last_certain_forwards - 1, 1));
 			if ((uncertainty & UNCERTAIN_FORWARDS) == 0) {
 				size_t shift = pull_bound_check(ops, &this_op_pos, last_certain_forwards, curr_off_fwd, 1);
-				end_pos += shift;
+				pos += shift;
 				if (last_certain_backwards > last_certain_forwards)
 					last_certain_backwards += shift;
 			} else {
-				last_certain_forwards = end_pos;
+				last_certain_forwards = pos;
 				curr_off_fwd = 0;
 			}
 			assert(!have_bound_at(&ops->out, last_certain_forwards - 1, 1));
 		} else if (op->op_type == BF_OP_SKIP) {
 			if (op->offset > 0) {
-				last_certain_forwards = end_pos;
+				last_certain_forwards = pos;
 				curr_off_fwd = 0;
 			} else {
-				last_certain_backwards = end_pos;
+				last_certain_backwards = pos;
 				curr_off_bck = 0;
 			}
 		}
-
-		i = end_pos;
 	}
 	ops->out.ops = realloc(ops->out.ops, ops->out.len * sizeof *ops->out.ops);
 }
