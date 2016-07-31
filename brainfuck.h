@@ -14,7 +14,7 @@ enum bf_op_type {
 	BF_OP_IN,             // FOP  take a character on input, store at the data pointer
 	BF_OP_OUT,            // FOP  output a character (specified at the data pointer)
 	BF_OP_LOOP,           //  OP  a loop, corresponding to the [] operator
-	BF_OP_ONCE,           // F  U a pseudo-op used to contain all other ops for execution
+	BF_OP_ONCE,           //    U a pseudo-op used to contain all other ops for execution
 	BF_OP_BOUNDS_CHECK,   // FO U ensure the tape has enough space for several future operations
 	BF_OP_SET,            // FO   set the absolute value of the data at the data pointer
 	BF_OP_MULTIPLY,       // FO   multiply current data and store elsewhere
