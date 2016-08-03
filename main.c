@@ -284,6 +284,114 @@ void print_bf_op(bf_op *op, int indent) {
 			errx(1, "Invalid internal state");
 	}
 }
+
+void print_flattened(char *restrict opcodes) {
+	size_t address = 0;
+	while (true) {
+		size_t start_address = address;
+		switch (opcodes[address++]) {
+			case BF_OP_ALTER: {
+				ssize_t offset = *(ssize_t*)&opcodes[address];
+				address += sizeof(ssize_t);
+				cell_int amount = *(cell_int*)&opcodes[address];
+				address += sizeof(cell_int);
+
+				printf("%08zx: ALTER >%zd %+d\n", start_address, offset, (int)amount);
+				break;
+			}
+
+#ifndef FIXED_TAPE_SIZE
+			case BF_OP_BOUNDS_CHECK: {
+				ssize_t offset = *(ssize_t*)&opcodes[address];
+				address += sizeof(ssize_t);
+
+				printf("%08zx: BOUNDS_CHECK %zd\n", start_address, offset);
+				break;
+			}
+#endif
+
+			case BF_OP_ALTER_MOVEONLY: {
+				ssize_t offset = *(ssize_t*)&opcodes[address];
+				address += sizeof(ssize_t);
+
+				printf("%08zx: ALTER_MOVEONLY >%zd\n", start_address, offset);
+				break;
+			}
+
+			case BF_OP_ALTER_ADDONLY: {
+				cell_int amount = *(cell_int*)&opcodes[address];
+				address += sizeof(cell_int);
+
+				printf("%08zx: ALTER_ADDONLY %+d\n", start_address, (int)amount);
+				break;
+			}
+
+			case BF_OP_MULTIPLY: {
+				uint8_t repeat = *(uint8_t*)&opcodes[address];
+				address++;
+				printf("%08zx: MULTIPLY {\n", start_address);
+				do {
+					size_t this_address = address;
+					ssize_t offset = *(ssize_t*)&opcodes[address];
+					address += sizeof(ssize_t);
+					cell_int amount = *(cell_int*)&opcodes[address];
+					address += sizeof(cell_int);
+
+					printf("%08zx: \t@%zd *%d\n", this_address, offset, (int)amount);
+				} while (repeat--);
+				printf("%08zx: }\n", address);
+
+				// Fallthrough to set
+			}
+
+			case BF_OP_SET: {
+				cell_int amount = *(cell_int*)&opcodes[address];
+				address += sizeof(cell_int);
+
+				printf("%08zx: SET %d\n", start_address, (int)amount);
+				break;
+			}
+
+			case BF_OP_IN:
+				printf("%08zx: IN\n", start_address);
+				break;
+
+			case BF_OP_OUT:
+				printf("%08zx: OUT\n", start_address);
+				break;
+
+
+			case BF_OP_SKIP: {
+				ssize_t offset = *(ssize_t*)&opcodes[address];
+				address += sizeof(ssize_t);
+
+				printf("%08zx: SKIP >%zd\n", start_address, offset);
+				break;
+			}
+
+			case BF_OP_JUMPIFZERO: {
+				ssize_t offset = *(ssize_t*)&opcodes[address];
+				address += sizeof(ssize_t);
+				printf("%08zx: JUMPIFZERO %+zd (%zx)\n", start_address, offset, address + offset);
+				break;
+			}
+
+			case BF_OP_JUMPIFNONZERO: {
+				ssize_t offset = *(ssize_t*)&opcodes[address];
+				address += sizeof(ssize_t);
+				printf("%08zx: JUMPIFNONZERO %+zd (%zx)\n", start_address, offset, address + offset);
+				break;
+			}
+
+			case BF_OP_DIE:
+				printf("%08zx: DIE\n", start_address);
+				return;
+
+			default:
+				errx(1, "Invalid internal state");
+		}
+	}
+}
 #endif
 
 void free_bf(bf_op *op) {
@@ -356,6 +464,11 @@ int main(int argc, char **argv){
 
 	// For the tiny savings this will give us...
 	free_bf(&root);
+
+#ifndef NDEBUG
+	print_flattened(flat.data);
+	printf("\n\n");
+#endif
 
 	execute(flat.data);
 
