@@ -22,15 +22,20 @@
  * ] jump to matching [
  */
 
-void usage(FILE *send_help_to, int exitcode) {
-	fputs(
+void usage(char *my_name, FILE *send_help_to, int exitcode) {
+	fprintf(send_help_to,
 			"Optimizing brainfuck interpreter\n"
+			"\n"
+			"Usage:\n"
+			"\t%s [OPTIONS...] [FILE]\n"
+			"\n"
 			"Options:\n"
 			"\t--dump-tree       Dump the optimized representation of the brainfuck program in tree form before execution\n"
 			"\t--dump-opcodes    Dump the flat optimized representation of the brainfuck program before execution\n"
 			"\t--no-execute      Do not execute the brainfuck program\n"
-			"\t--help            Print this help message\n",
-			send_help_to
+			"\t--help            Print this help message\n"
+			"\t--                Stop parsing options. The next argument, if any, will be treated as the filename\n",
+			my_name
 	);
 	exit(exitcode);
 }
@@ -53,16 +58,16 @@ int main(int argc, char **argv){
 			argpos++;
 			break;
 		} else if (!strcmp(argv[argpos], "--help")) {
-			usage(stdout, 0);
+			usage(argv[0], stdout, 0);
 		} else {
 			warnx("Invalid argument %s", argv[argpos]);
-			usage(stderr, 1);
+			usage(argv[0], stderr, 1);
 		}
 	}
 
 	if (argpos < argc - 1) {
-		warnx("Cannot handle more than 1 filename");
-		usage(stderr, 1);
+		warnx("Cannot handle more than 1 filename.\nUse an external utility like cat if you want to join source code together.");
+		usage(argv[0], stderr, 1);
 	}
 
 	FILE *file;
