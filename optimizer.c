@@ -227,6 +227,31 @@ bool can_merge_set_ops(bf_op_builder *restrict arr, size_t pos) {
 	return true;
 }
 
+static bool is_redundant_set(bf_op_builder *restrict arr, size_t pos) {
+	bf_op *op = &arr->ops[pos];
+	if (op->op_type != BF_OP_SET) return false;
+
+	if (pos + 1 < arr->len) {
+		bf_op *next = &arr->ops[pos + 1];
+		// If there's a SET after us, covering a wider or equal range of
+		// offsets, this one isn't necessary.
+		if (next->op_type == BF_OP_SET && op->offset <= next->offset)
+			return true;
+	}
+
+	if (pos > 0) {
+		bf_op *prev = &arr->ops[pos - 1];
+		// If this is a SET(0) spanning only one cell, directly after a
+		// loop, elide it because it must already be zero after the
+		// loop finishes.
+		if (prev->op_type == BF_OP_LOOP
+				&& op->amount == 0 && op->offset == 0)
+			return true;
+	}
+
+	return false;
+}
+
 void peephole_optimize(bf_op_builder *ops) {
 	for (size_t i = 0; i < ops->len; i++) {
 		bf_op *child = &ops->ops[i];
@@ -240,14 +265,7 @@ void peephole_optimize(bf_op_builder *ops) {
 		} else if (child->op_type == BF_OP_ALTER && child->offset == 0) {
 			if (move_addition(ops, i))
 				i--;
-		} else if (child->op_type == BF_OP_SET
-				&& ((i + 1 < ops->len
-						&& ops->ops[i + 1].op_type == BF_OP_SET
-						&& child->offset <= ops->ops[i + 1].offset)
-					|| (child->amount == 0
-						&& child->offset == 0
-						&& i > 0
-						&& ops->ops[i - 1].op_type == BF_OP_LOOP))) {
+		} else if (is_redundant_set(ops, i)) {
 			remove_bf_ops(ops, i--, 1);
 		} else if (can_merge_set_ops(ops, i)) {
 			ssize_t old_offset = ops->ops[i - 1].offset;
