@@ -1,0 +1,50 @@
+#!/bin/sh
+executable=./brainfuck
+test_dir=./tests
+[ -x ./brainfuck ] || { printf 'No %s executable available\n' "$executable" >&2; exit 1; }
+
+diff=diff
+command -v colordiff >/dev/null && diff=colordiff
+
+cleanup() {
+    rm -f -- "$output"
+}
+output=
+trap cleanup EXIT
+trap 'exit 1' INT HUP TERM PIPE
+output=$(mktemp) || exit
+
+test_file() {
+    local script expected
+    script=$1 expected=$2
+    "$executable" "$script" >"$output" || { reason=error; return 2; }
+    cmp -s "$output" "$expected" || { reason=fail; return 1; }
+    reason=OK
+    return 0
+}
+
+count=0 failures=0
+for f in "$test_dir"/*.bf; do
+    failed=false
+
+    expected=${f%.bf}.out
+
+    test_file "$f" "$expected" || failed=true
+    printf '%20s: %s\n' "${f#"$test_dir"/}" "$reason"
+
+    if $failed; then
+        failures=$((failures + 1))
+        echo 'Difference between expected and actual output:'
+        "$diff" -u "$expected" "$output"
+    fi
+
+    count=$((count + 1))
+done
+
+if [ "$failures" -eq 0 ]; then
+    printf 'All passed, out of %s tests.\n' "$count"
+    exit 0
+else
+    printf '%s of %s tests failed.\n' "$failures" "$count"
+    exit 1
+fi
