@@ -1,5 +1,7 @@
 #include <assert.h>
+#include <stdbool.h>
 #include <string.h>
+
 #include "optimizer.h"
 #include "parser.h"
 

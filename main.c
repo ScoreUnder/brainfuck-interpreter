@@ -1,13 +1,8 @@
-#include<stdbool.h>
-#include<stdlib.h>
-#include<stdio.h>
-#include<string.h>
-#include<sys/mman.h>
-#include<sys/types.h>
-#include<sys/stat.h>
-#include<fcntl.h>
-#include<unistd.h>
-#include<err.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+#include <err.h>
 
 #include "parser.h"
 #include "flattener.h"
@@ -72,17 +67,12 @@ int main(int argc, char **argv){
 
 	char *filename = argv[argpos];
 
-	int fd = open(filename, O_RDONLY);
-	if (fd == -1) err(1, "Can't open file %s", filename);
-	size_t size = (size_t) lseek(fd, 0, SEEK_END);
-	if (size == (size_t)-1) err(1, "Can't seek file %s", filename);
-	char *map = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
-	if (map == MAP_FAILED) err(1, "Can't mmap file %s", filename);
+	FILE *file = fopen(filename, "r");
+	if (!file) err(1, "Can't open file %s", filename);
 
-	bf_op root = build_bf_tree(&(blob_cursor){.data = map, .len = size});
+	bf_op root = build_bf_tree(file);
 
-	munmap(map, size);
-	close(fd);
+	fclose(file);
 
 	if (dump_tree)
 		print_bf_op(&root, 0);

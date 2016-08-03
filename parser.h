@@ -1,15 +1,10 @@
 #ifndef USING_PARSER_H
 #define USING_PARSER_H
 
-#include <stdbool.h>
+#include <stdio.h>
 
 #include "brainfuck.h"
 
-typedef struct {
-	char *data;
-	size_t pos, len;
-} blob_cursor;
-
-bf_op build_bf_tree(blob_cursor *input);
+bf_op build_bf_tree(FILE *input);
 
 #endif

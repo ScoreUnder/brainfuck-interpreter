@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <err.h>
 
 #include "parser.h"
@@ -39,14 +40,21 @@ static void alloc_op_by_char(unsigned char op_char, bf_op_builder *builder) {
 		};
 }
 
-bf_op* build_bf_tree_internal(blob_cursor *restrict input, bool expecting_bracket, size_t *out_len) {
+bf_op* build_bf_tree_internal(FILE *restrict input, bool expecting_bracket, size_t *out_len) {
 	bf_op_builder builder;
 	builder.alloc = 16;
 	builder.out.len = 0;
 	builder.out.ops = malloc(builder.alloc * sizeof *builder.out.ops);
 
-	while (input->pos < input->len) {
-		unsigned char c = input->data[input->pos++];
+	while (true) {
+		int c = getc(input);
+		if (c == EOF) {
+			if (feof(input))
+				break;
+			else
+				err(2, "could not read brainfuck code");
+		}
+
 		if (op_type_for_char[c] == BF_OP_INVALID)
 			continue;
 
@@ -87,7 +95,7 @@ end:
 	return builder.out.ops;
 }
 
-bf_op build_bf_tree(blob_cursor *restrict input) {
+bf_op build_bf_tree(FILE *input) {
 	bf_op root = {.op_type = BF_OP_ONCE};
 	root.children.ops = build_bf_tree_internal(input, false, &root.children.len);
 
