@@ -17,8 +17,8 @@ static char op_type_for_char[256] = {
 
 static void alloc_op_by_char(unsigned char op_char, bf_op_builder *builder) {
 	bool need_alloc = true;
-	if (builder->out.len != 0) {
-		bf_op *last = &builder->out.ops[builder->out.len - 1];
+	if (builder->len != 0) {
+		bf_op *last = &builder->ops[builder->len - 1];
 		switch (op_char) {
 			case '+':
 			case '-':
@@ -40,11 +40,11 @@ static void alloc_op_by_char(unsigned char op_char, bf_op_builder *builder) {
 		};
 }
 
-bf_op* build_bf_tree_internal(FILE *restrict input, bool expecting_bracket, size_t *out_len) {
+bf_op_builder build_bf_tree_internal(FILE *restrict input, bool expecting_bracket) {
 	bf_op_builder builder;
 	builder.alloc = 16;
-	builder.out.len = 0;
-	builder.out.ops = malloc(builder.alloc * sizeof *builder.out.ops);
+	builder.len = 0;
+	builder.ops = malloc(builder.alloc * sizeof *builder.ops);
 
 	while (true) {
 		int c = getc(input);
@@ -60,7 +60,7 @@ bf_op* build_bf_tree_internal(FILE *restrict input, bool expecting_bracket, size
 
 		alloc_op_by_char(c, &builder);
 
-		bf_op *op = &builder.out.ops[builder.out.len - 1];
+		bf_op *op = &builder.ops[builder.len - 1];
 		switch (c) {
 			case '+':
 				op->amount++;
@@ -75,7 +75,7 @@ bf_op* build_bf_tree_internal(FILE *restrict input, bool expecting_bracket, size
 				op->offset--;
 				break;
 			case '[':
-				op->children.ops = build_bf_tree_internal(input, true, &op->children.len);
+				op->children = build_bf_tree_internal(input, true);
 				optimize_loop(&builder);
 				break;
 			case ']':
@@ -85,28 +85,20 @@ bf_op* build_bf_tree_internal(FILE *restrict input, bool expecting_bracket, size
 	}
 
 end:
-	*out_len = builder.out.len;
-	if (builder.out.len == 0) {
-		free(builder.out.ops);
-		builder.out.ops = NULL;
+	if (builder.len == 0) {
+		free(builder.ops);
+		builder.alloc = 0;
+		builder.ops = NULL;
 	}
-	return builder.out.ops;
+	return builder;
 }
 
 bf_op build_bf_tree(FILE *input) {
 	bf_op root = {.op_type = BF_OP_ONCE};
-	root.children.ops = build_bf_tree_internal(input, false, &root.children.len);
+	root.children = build_bf_tree_internal(input, false);
 
 #ifndef FIXED_TAPE_SIZE
-	bf_op_builder builder = {
-		.out = {
-			.ops = root.children.ops,
-			.len = root.children.len,
-		},
-		.alloc = root.children.len,
-	};
-	add_bounds_checks(&builder);
-	root.children = builder.out;
+	add_bounds_checks(&root.children);
 #endif
 
 	return root;

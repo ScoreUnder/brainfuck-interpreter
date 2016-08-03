@@ -4,36 +4,37 @@
  */
 #include <assert.h>
 #include <string.h>
+#include <stdio.h>
 
 #include "brainfuck.h"
 
 bf_op* alloc_bf_op(bf_op_builder *ops) {
 	assert(ops != NULL);
-	assert(ops->out.ops != NULL);
+	assert(ops->ops != NULL);
 	assert(ops->alloc != 0);
 
-	if (ops->out.len == ops->alloc) {
+	if (ops->len == ops->alloc) {
 		ops->alloc *= 2;
-		ops->out.ops = realloc(ops->out.ops, ops->alloc * sizeof *ops->out.ops);
+		ops->ops = realloc(ops->ops, ops->alloc * sizeof *ops->ops);
 	}
-	return &ops->out.ops[ops->out.len++];
+	return &ops->ops[ops->len++];
 }
 
 bf_op* insert_bf_op(bf_op_builder *ops, size_t index) {
 	assert(ops != NULL);
-	assert(ops->out.ops != NULL);
+	assert(ops->ops != NULL);
 	assert(ops->alloc != 0);
 
-	if (ops->out.len == ops->alloc) {
+	if (ops->len == ops->alloc) {
 		ops->alloc *= 2;
-		ops->out.ops = realloc(ops->out.ops, ops->alloc * sizeof *ops->out.ops);
+		ops->ops = realloc(ops->ops, ops->alloc * sizeof *ops->ops);
 	}
-	memmove(ops->out.ops + index + 1, ops->out.ops + index, (ops->out.len - index) * sizeof *ops->out.ops);
-	ops->out.len++;
-	return &ops->out.ops[index];
+	memmove(ops->ops + index + 1, ops->ops + index, (ops->len - index) * sizeof *ops->ops);
+	ops->len++;
+	return &ops->ops[index];
 }
 
-void remove_bf_ops(bf_op_array *arr, size_t index, size_t count) {
+void remove_bf_ops(bf_op_builder *arr, size_t index, size_t count) {
 	assert(arr != NULL);
 	assert(arr->ops != NULL);
 	assert(index + count <= arr->len);

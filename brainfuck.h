@@ -31,32 +31,30 @@ typedef int8_t cell_int;
 
 struct s_bf_op;
 
-typedef struct s_bf_op_array {
+typedef struct {
 	struct s_bf_op *ops;
 	size_t len;
-} bf_op_array;
+	size_t alloc;
+} bf_op_builder;
 
 typedef struct s_bf_op {
 	enum bf_op_type op_type;
-	int uncertainty;
 
 	union {
-		bf_op_array children;
 		struct {
+			bf_op_builder children;  // Applies to LOOPs and ONCE only
+			int uncertainty;  // Applies to LOOPs only
+		};
+		struct { // Applies to most things but notably not LOOPs or ONCE
 			ssize_t offset;
 			cell_int amount;
 		};
 	};
 } bf_op;
 
-typedef struct {
-	bf_op_array out;
-	size_t alloc;
-} bf_op_builder;
-
 bf_op* alloc_bf_op(bf_op_builder *ops);
 bf_op* insert_bf_op(bf_op_builder *ops, size_t index);
-void remove_bf_ops(bf_op_array *arr, size_t index, size_t count);
+void remove_bf_ops(bf_op_builder *arr, size_t index, size_t count);
 void free_bf_op_children(bf_op *op);
 
 #endif

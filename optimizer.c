@@ -71,7 +71,7 @@ int get_loop_balance(bf_op *restrict op) {
 	return uncertainty;
 }
 
-bool move_addition(bf_op_array *restrict arr, size_t add_pos) {
+bool move_addition(bf_op_builder *restrict arr, size_t add_pos) {
 	assert(add_pos < arr->len);
 	assert(arr->ops[add_pos].op_type == BF_OP_ALTER);
 	assert(arr->ops[add_pos].offset == 0);
@@ -143,11 +143,11 @@ void make_offsets_relative(bf_op *restrict op) {
 
 bool make_loop_into_multiply(bf_op_builder *ops) {
 	assert(ops != NULL);
-	assert(ops->out.ops != NULL);
-	assert(ops->out.len > 0);
+	assert(ops->ops != NULL);
+	assert(ops->len > 0);
 
-	size_t my_op_index = ops->out.len - 1;
-	bf_op *op = &ops->out.ops[my_op_index];
+	size_t my_op_index = ops->len - 1;
+	bf_op *op = &ops->ops[my_op_index];
 
 	assert(op->op_type == BF_OP_LOOP);
 
@@ -194,12 +194,12 @@ error:
 				.offset = target_offset,
 				.amount = final_amount,
 			};
-			op = &ops->out.ops[my_op_index];
+			op = &ops->ops[my_op_index];
 		}
 	}
 
 	free_bf_op_children(op);
-	remove_bf_ops(&ops->out, my_op_index, 1);
+	remove_bf_ops(ops, my_op_index, 1);
 
 	*alloc_bf_op(ops) = (bf_op) {
 		.op_type = BF_OP_SET,
@@ -209,7 +209,7 @@ error:
 	return true;
 }
 
-bool can_merge_set_ops(bf_op_array *restrict arr, size_t pos) {
+bool can_merge_set_ops(bf_op_builder *restrict arr, size_t pos) {
 	// We need a lookbehind of 2
 	if (pos < 2) return false;
 
@@ -228,7 +228,7 @@ bool can_merge_set_ops(bf_op_array *restrict arr, size_t pos) {
 }
 
 void optimize_loop(bf_op_builder *ops) {
-	bf_op *op = &ops->out.ops[ops->out.len - 1];
+	bf_op *op = &ops->ops[ops->len - 1];
 	// Peephole optimizations that can't be done during build time
 	for (size_t i = 0; i < op->children.len; i++) {
 		bf_op *child = &op->children.ops[i];
@@ -259,21 +259,11 @@ void optimize_loop(bf_op_builder *ops) {
 			if (i + 1 < op->children.len && op->children.ops[i + 1].op_type == BF_OP_ALTER) {
 				op->children.ops[i + 1].offset += old_offset;
 			} else {
-				// Copy of the same code from lower down, pending a few type tweaks...
-				// Wrap op children in a reallocatable structure
-				bf_op_builder builder = {
-					.out = {
-						.ops = op->children.ops,
-						.len = op->children.len,
-					},
-					.alloc = op->children.len,
-				};
-				*insert_bf_op(&builder, i + 1) = (bf_op) {
+				*insert_bf_op(&op->children, i + 1) = (bf_op) {
 					.op_type = BF_OP_ALTER,
 					.offset = old_offset,
 					.amount = 0,
 				};
-				op->children = builder.out;
 			}
 		}
 	}
@@ -298,7 +288,7 @@ static void make_bound_check(bf_op_builder *ops, size_t pos, ssize_t bound) {
 	};
 }
 
-static size_t check_for_bound_check(bf_op_array *ops_arr, size_t index, int direction) {
+static size_t check_for_bound_check(bf_op_builder *ops_arr, size_t index, int direction) {
 	assert(direction == 1 || direction == -1);
 
 	for (size_t j = index; j < ops_arr->len && j < index + 2; j++) {
@@ -313,12 +303,12 @@ static size_t check_for_bound_check(bf_op_array *ops_arr, size_t index, int dire
 
 static size_t reuse_or_make_bound_check(bf_op_builder *ops, size_t index, int bound, int direction) {
 	assert(bound != 0);
-	size_t bound_check = check_for_bound_check(&ops->out, index, bound > 0 ? 1 : -1);
+	size_t bound_check = check_for_bound_check(ops, index, bound > 0 ? 1 : -1);
 	if (bound_check == (size_t) -1) {
 		make_bound_check(ops, index, bound);
 		return 1;
 	} else {
-		bf_op *bound_check_op = &ops->out.ops[bound_check];
+		bf_op *bound_check_op = &ops->ops[bound_check];
 		if ((bound > bound_check_op->offset && direction > 0)
 				|| (bound < bound_check_op->offset && direction < 0)) {
 			bound_check_op->offset = bound;
@@ -329,7 +319,7 @@ static size_t reuse_or_make_bound_check(bf_op_builder *ops, size_t index, int bo
 
 static size_t pull_bound_check(bf_op_builder *ops, size_t *call_op_index, size_t i, ssize_t current_offset, int direction) {
 	size_t shift = 0;
-	bf_op *op = &ops->out.ops[*call_op_index];
+	bf_op *op = &ops->ops[*call_op_index];
 	assert(op->op_type == BF_OP_LOOP);
 	size_t inner_bound_check = check_for_bound_check(&op->children, 0, direction);
 	if (inner_bound_check != (size_t)-1) {
@@ -338,17 +328,17 @@ static size_t pull_bound_check(bf_op_builder *ops, size_t *call_op_index, size_t
 		if ((inner_bound_offset > 0 && direction > 0)
 				|| (inner_bound_offset < 0 && direction < 0)) {
 			// The bounds check may need to be created or updated
-			size_t bound_check = check_for_bound_check(&ops->out, i, direction);
+			size_t bound_check = check_for_bound_check(ops, i, direction);
 			if (bound_check == (size_t)-1) {
 				make_bound_check(ops, i, inner_bound_offset);
 				shift = 1;
 				(*call_op_index)++;
 
-				op = &ops->out.ops[*call_op_index]; // we moved due to make_bound_check's realloc and memmove
+				op = &ops->ops[*call_op_index]; // we moved due to make_bound_check's realloc and memmove
 
 				bound_check = i;
 			}
-			bf_op *restrict bound_op = &ops->out.ops[bound_check];
+			bf_op *restrict bound_op = &ops->ops[bound_check];
 			assert((bound_op->offset > 0 && direction > 0)
 					|| (bound_op->offset < 0 && direction < 0));
 			if ((direction > 0 && inner_bound_offset > bound_op->offset)
@@ -363,7 +353,7 @@ static size_t pull_bound_check(bf_op_builder *ops, size_t *call_op_index, size_t
 }
 
 #ifndef NDEBUG
-static bool have_bound_at(bf_op_array *arr, size_t where, int direction) {
+static bool have_bound_at(bf_op_builder *arr, size_t where, int direction) {
 	if ((ssize_t) where < 0) return false;
 	assert(where < arr->len);
 
@@ -382,20 +372,20 @@ static bool have_bound_at(bf_op_array *arr, size_t where, int direction) {
 
 void add_bounds_checks(bf_op_builder *ops) {
 	assert(ops != NULL);
-	if (ops->out.len == 0)
+	if (ops->len == 0)
 		return;
 
-	assert(ops->out.ops != NULL);
+	assert(ops->ops != NULL);
 
 	size_t last_certain_forwards = 0, last_certain_backwards = 0;
 
 	ssize_t curr_off_fwd = 0; // Current offset since last forwards uncertainty
 	ssize_t curr_off_bck = 0;
-	for (size_t pos = 0; pos < ops->out.len;) {
+	for (size_t pos = 0; pos < ops->len;) {
 		ssize_t max_bound = 0, min_bound = 0;
 
-		while (pos < ops->out.len) {
-			bf_op *op = &ops->out.ops[pos];
+		while (pos < ops->len) {
+			bf_op *op = &ops->ops[pos];
 			if (op->op_type == BF_OP_LOOP || op->op_type == BF_OP_SKIP)
 				break;
 
@@ -419,45 +409,35 @@ void add_bounds_checks(bf_op_builder *ops) {
 		}
 
 		if (max_bound) {
-			assert(!have_bound_at(&ops->out, last_certain_forwards - 1, 1));
+			assert(!have_bound_at(ops, last_certain_forwards - 1, 1));
 			size_t shift = reuse_or_make_bound_check(ops, last_certain_forwards, max_bound, 1);
 			pos += shift;
 			if (last_certain_backwards > last_certain_forwards)
 				last_certain_backwards += shift;
-			assert(!have_bound_at(&ops->out, last_certain_forwards - 1, 1));
+			assert(!have_bound_at(ops, last_certain_forwards - 1, 1));
 		}
 		if (min_bound) {
-			assert(!have_bound_at(&ops->out, last_certain_backwards - 1, -1));
+			assert(!have_bound_at(ops, last_certain_backwards - 1, -1));
 			size_t shift = reuse_or_make_bound_check(ops, last_certain_backwards, min_bound, -1);
 			pos += shift;
 			if (last_certain_forwards > last_certain_backwards)
 				last_certain_forwards += shift;
-			assert(!have_bound_at(&ops->out, last_certain_backwards - 1, -1));
+			assert(!have_bound_at(ops, last_certain_backwards - 1, -1));
 		}
 
-		assert(pos <= ops->out.len);
-		if (pos >= ops->out.len)
+		assert(pos <= ops->len);
+		if (pos >= ops->len)
 			break;
 
 		size_t this_op_pos = pos++;
-		bf_op *op = &ops->out.ops[this_op_pos];
+		bf_op *op = &ops->ops[this_op_pos];
 		if (op->op_type == BF_OP_LOOP) {
-			// Playing with fire...
-			// Wrap op children in a reallocatable structure
-			bf_op_builder builder = {
-				.out = {
-					.ops = op->children.ops,
-					.len = op->children.len,
-				},
-				.alloc = op->children.len,
-			};
-			add_bounds_checks(&builder);
-			op->children = builder.out;
+			add_bounds_checks(&op->children);
 
 			// Serious hacks round 2: pull bounds checks from the beginning of the loop
 			int uncertainty = get_loop_balance(op);
 
-			assert(!have_bound_at(&ops->out, last_certain_backwards - 1, -1));
+			assert(!have_bound_at(ops, last_certain_backwards - 1, -1));
 			if ((uncertainty & UNCERTAIN_BACKWARDS) == 0) {
 				size_t shift = pull_bound_check(ops, &this_op_pos, last_certain_backwards, curr_off_bck, -1);
 				pos += shift;
@@ -467,9 +447,9 @@ void add_bounds_checks(bf_op_builder *ops) {
 				last_certain_backwards = pos;
 				curr_off_bck = 0;
 			}
-			assert(!have_bound_at(&ops->out, last_certain_backwards - 1, -1));
+			assert(!have_bound_at(ops, last_certain_backwards - 1, -1));
 
-			assert(!have_bound_at(&ops->out, last_certain_forwards - 1, 1));
+			assert(!have_bound_at(ops, last_certain_forwards - 1, 1));
 			if ((uncertainty & UNCERTAIN_FORWARDS) == 0) {
 				size_t shift = pull_bound_check(ops, &this_op_pos, last_certain_forwards, curr_off_fwd, 1);
 				pos += shift;
@@ -479,7 +459,7 @@ void add_bounds_checks(bf_op_builder *ops) {
 				last_certain_forwards = pos;
 				curr_off_fwd = 0;
 			}
-			assert(!have_bound_at(&ops->out, last_certain_forwards - 1, 1));
+			assert(!have_bound_at(ops, last_certain_forwards - 1, 1));
 		} else if (op->op_type == BF_OP_SKIP) {
 			if (op->offset > 0) {
 				last_certain_forwards = pos;
@@ -490,5 +470,7 @@ void add_bounds_checks(bf_op_builder *ops) {
 			}
 		}
 	}
-	ops->out.ops = realloc(ops->out.ops, ops->out.len * sizeof *ops->out.ops);
+	// Make this loop a little smaller
+	ops->alloc = ops->len;
+	ops->ops = realloc(ops->ops, ops->len * sizeof *ops->ops);
 }
