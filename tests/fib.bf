@@ -1,5 +1,4 @@
-
-+++++++++++++++++++++ number of digits to output
++++++++++++ number of digits to output
 > #1
 + initial number
 >>>> #5
