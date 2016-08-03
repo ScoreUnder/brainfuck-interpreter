@@ -71,7 +71,7 @@ int get_loop_balance(bf_op *restrict op) {
 	return uncertainty;
 }
 
-void move_addition(bf_op_array *restrict arr, size_t add_pos) {
+bool move_addition(bf_op_array *restrict arr, size_t add_pos) {
 	assert(add_pos < arr->len);
 	assert(arr->ops[add_pos].op_type == BF_OP_ALTER);
 	assert(arr->ops[add_pos].offset == 0);
@@ -101,10 +101,11 @@ void move_addition(bf_op_array *restrict arr, size_t add_pos) {
 		}
 	}
 
-	if (!found_spot) return;
+	if (!found_spot) return false;
 
 	arr->ops[final_pos].amount += arr->ops[add_pos].amount;
 	remove_bf_ops(arr, add_pos, 1);
+	return true;
 }
 
 void make_offsets_absolute(bf_op *restrict op) {
@@ -218,7 +219,8 @@ void optimize_loop(bf_op_builder *ops) {
 			child->children.ops = NULL;
 			child->children.len = 0;
 		} else if (child->op_type == BF_OP_ALTER && child->offset == 0) {
-			move_addition(&op->children, i);
+			if (move_addition(&op->children, i))
+				i--;
 		}
 	}
 
