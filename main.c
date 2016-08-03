@@ -54,7 +54,7 @@ int main(int argc, char **argv){
 	flatten_bf(&root, &flat);
 
 	// For the tiny savings this will give us...
-	free_bf_op(&root);
+	free_bf_op_children(&root);
 
 #ifndef NDEBUG
 	print_flattened(flat.data);
