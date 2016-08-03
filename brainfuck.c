@@ -38,6 +38,9 @@ void remove_bf_ops(bf_op_array *arr, size_t index, size_t count) {
 	assert(arr->ops != NULL);
 	assert(index + count <= arr->len);
 
+	for (size_t i = index; i < index + count; i++) {
+		free_bf_op_children(&arr->ops[i]);
+	}
 	memmove(arr->ops + index, arr->ops + index + count,
 			(arr->len - index - count) * sizeof *arr->ops);
 	arr->len -= count;

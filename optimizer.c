@@ -195,7 +195,7 @@ error:
 		}
 	}
 
-	free(op->children.ops);
+	free_bf_op_children(op);
 	remove_bf_ops(&ops->out, my_op_index, 1);
 
 	*alloc_bf_op(ops) = (bf_op) {
@@ -236,7 +236,7 @@ void optimize_loop(bf_op_builder *ops) {
 			&& op->children.ops[0].op_type == BF_OP_ALTER
 			&& op->children.ops[0].amount == 0) {
 		ssize_t offset = op->children.ops[0].offset;
-		free(op->children.ops);
+		free_bf_op_children(op);
 		op->op_type = BF_OP_SKIP;
 		op->offset = offset;
 	} else if (make_loop_into_multiply(ops)) {
