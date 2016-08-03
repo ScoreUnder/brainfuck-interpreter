@@ -42,3 +42,21 @@ void remove_bf_ops(bf_op_array *arr, size_t index, size_t count) {
 			(arr->len - index - count) * sizeof *arr->ops);
 	arr->len -= count;
 }
+
+void free_bf_op(bf_op *op) {
+	switch (op->op_type) {
+		case BF_OP_LOOP:
+		case BF_OP_ONCE: {
+			size_t children = op->children.len;
+			for (size_t i = 0; i < children; i++)
+				free_bf_op(&op->children.ops[i]);
+			if (children != 0)
+				free(op->children.ops);
+			break;
+		}
+
+		default:
+			// Everything else is fine
+			break;
+	}
+}

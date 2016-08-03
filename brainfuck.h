@@ -56,5 +56,6 @@ typedef struct {
 bf_op* alloc_bf_op(bf_op_builder *ops);
 bf_op* insert_bf_op(bf_op_builder *ops, size_t index);
 void remove_bf_ops(bf_op_array *arr, size_t index, size_t count);
+void free_bf_op(bf_op *op);
 
 #endif
