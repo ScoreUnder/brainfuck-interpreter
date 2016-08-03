@@ -1,4 +1,6 @@
 #include <assert.h>
+#include <stdbool.h>
+
 #include "flattener.h"
 
 static void blob_ensure_extra(blob_cursor *out, size_t extra) {
@@ -77,19 +79,33 @@ static ssize_t flatten_bf_internal(bf_op *op, blob_cursor *out, ssize_t previous
 			break;
 		}
 
-		case BF_OP_SET:
-			if (previous_op != -1 && out->data[previous_op] == BF_OP_MULTIPLY) {
+		case BF_OP_SET: {
+			bool was_multiply = previous_op != -1 && out->data[previous_op] == BF_OP_MULTIPLY;
+			bool is_multi = op->offset != 0;
+			if (was_multiply) {
 				blob_ensure_extra(out, sizeof(cell_int));
-				*(cell_int*)&out->data[out->pos] = op->amount;
-				out->pos += sizeof(cell_int);
-				return -1;
-			} else {
+				if (is_multi) {
+					// Multi-set after multiply = can just throw away a cell_int anyway...
+					*(cell_int*)&out->data[out->pos] = op->amount;
+					out->pos += sizeof(cell_int);
+					// ...and from now on it's a normal multi
+				}
+			}
+			if (is_multi) {
+				blob_ensure_extra(out, sizeof(ssize_t) + sizeof(cell_int) + 1);
+				out->data[out->pos++] = BF_OP_SET_MULTI;
+				*(ssize_t*)&out->data[out->pos] = op->offset;
+				out->pos += sizeof(ssize_t);
+			} else if (!was_multiply) {
 				blob_ensure_extra(out, sizeof(cell_int) + 1);
 				out->data[out->pos++] = BF_OP_SET;
-				*(cell_int*)&out->data[out->pos] = op->amount;
-				out->pos += sizeof(cell_int);
 			}
+			*(cell_int*)&out->data[out->pos] = op->amount;
+			out->pos += sizeof(cell_int);
+			if (was_multiply)
+				return -1;
 			break;
+		}
 
 		case BF_OP_MULTIPLY:
 			if (previous_op != -1 && out->data[previous_op] == BF_OP_MULTIPLY

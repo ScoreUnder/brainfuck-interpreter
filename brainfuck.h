@@ -17,6 +17,7 @@ enum bf_op_type {
 	BF_OP_ONCE,           //    U a pseudo-op used to contain all other ops for execution
 	BF_OP_BOUNDS_CHECK,   // FO U ensure the tape has enough space for several future operations
 	BF_OP_SET,            // FO   set the absolute value of the data at the data pointer
+	BF_OP_SET_MULTI,      // F    set the absolute value of several cells at once starting from the data pointer
 	BF_OP_MULTIPLY,       // FO   multiply current data and store elsewhere
 	BF_OP_SKIP,           // FO   skip cells until a zero is reached. optimization of loops like [>>>]
 	BF_OP_ALTER_MOVEONLY, // F    move data pointer

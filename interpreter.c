@@ -159,6 +159,17 @@ void execute_bf(char *restrict what) {
 				break;
 			}
 
+			case BF_OP_SET_MULTI: {
+				ssize_t offset = *(ssize_t*)what;
+				what += sizeof(ssize_t);
+				cell_int amount = *(cell_int*)what;
+				what += sizeof(cell_int);
+
+				for (ssize_t i = 0; i <= offset; i++)
+					tape.cells[tape.pos + i] = amount;
+				break;
+			}
+
 			case BF_OP_IN: {
 				int input = getchar();
 				if (input == EOF && sizeof(cell_int) == 1) input = 0;

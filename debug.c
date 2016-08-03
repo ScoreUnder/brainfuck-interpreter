@@ -33,7 +33,7 @@ void print_bf_op(bf_op *op, int indent) {
 			break;
 
 		case BF_OP_SET:
-			printf("SET%d ", (int)op->amount);
+			printf("SET%d,+%zd ", (int)op->amount, op->offset);
 			break;
 
 		case BF_OP_MULTIPLY:
@@ -133,6 +133,16 @@ void print_flattened(char *restrict opcodes) {
 				address += sizeof(cell_int);
 
 				printf("%08zx: SET %d\n", start_address, (int)amount);
+				break;
+			}
+
+			case BF_OP_SET_MULTI: {
+				ssize_t offset = *(ssize_t*)&opcodes[address];
+				address += sizeof(ssize_t);
+				cell_int amount = *(cell_int*)&opcodes[address];
+				address += sizeof(cell_int);
+
+				printf("%08zx: SET_MULTI %d,+%zd\n", start_address, (int)amount, offset);
 				break;
 			}
 

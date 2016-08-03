@@ -83,8 +83,11 @@ bool move_addition(bf_op_array *restrict arr, size_t add_pos) {
 
 	for (; final_pos < arr->len; final_pos++) {
 		uint_fast8_t op_type = arr->ops[final_pos].op_type;
-		if (op_type == BF_OP_SET || op_type == BF_OP_IN || op_type == BF_OP_OUT) {
+		if (op_type == BF_OP_IN || op_type == BF_OP_OUT) {
 			if (offset == 0) break;
+		} else if (op_type == BF_OP_SET) {
+			if (offset == 0) break;
+			if (offset < 0 && offset + arr->ops[final_pos].offset >= 0) break;
 		} else if (op_type == BF_OP_MULTIPLY) {
 			if (offset == 0 || offset == -arr->ops[final_pos].offset) {
 				break;
@@ -206,6 +209,24 @@ error:
 	return true;
 }
 
+bool can_merge_set_ops(bf_op_array *restrict arr, size_t pos) {
+	// We need a lookbehind of 2
+	if (pos < 2) return false;
+
+	// Looking for SET ALTER SET (e.g. "[-]>[-]")
+	if (arr->ops[pos].op_type != BF_OP_SET) return false;
+	if (arr->ops[pos - 1].op_type != BF_OP_ALTER) return false;
+	if (arr->ops[pos - 2].op_type != BF_OP_SET) return false;
+
+	// The alter must bring us exactly 1 cell past the first (multi-)SET
+	// (also, we don't care about its amount; a SET overwrites it)
+	if (arr->ops[pos - 1].offset != 1 + arr->ops[pos - 2].offset) return false;
+	// The amounts to SET to must be identical
+	if (arr->ops[pos - 2].amount != arr->ops[pos].amount) return false;
+
+	return true;
+}
+
 void optimize_loop(bf_op_builder *ops) {
 	bf_op *op = &ops->out.ops[ops->out.len - 1];
 	// Peephole optimizations that can't be done during build time
@@ -223,11 +244,37 @@ void optimize_loop(bf_op_builder *ops) {
 				i--;
 		} else if (child->op_type == BF_OP_SET
 				&& ((i + 1 < op->children.len
-						&& op->children.ops[i + 1].op_type == BF_OP_SET)
+						&& op->children.ops[i + 1].op_type == BF_OP_SET
+						&& child->offset <= op->children.ops[i + 1].offset)
 					|| (child->amount == 0
+						&& child->offset == 0
 						&& i > 0
 						&& op->children.ops[i - 1].op_type == BF_OP_LOOP))) {
 			remove_bf_ops(&op->children, i--, 1);
+		} else if (can_merge_set_ops(&op->children, i)) {
+			ssize_t old_offset = op->children.ops[i - 1].offset;
+			op->children.ops[i - 2].offset += child->offset + 1;
+			remove_bf_ops(&op->children, i - 1, 2);
+			i -= 2;
+			if (i + 1 < op->children.len && op->children.ops[i + 1].op_type == BF_OP_ALTER) {
+				op->children.ops[i + 1].offset += old_offset;
+			} else {
+				// Copy of the same code from lower down, pending a few type tweaks...
+				// Wrap op children in a reallocatable structure
+				bf_op_builder builder = {
+					.out = {
+						.ops = op->children.ops,
+						.len = op->children.len,
+					},
+					.alloc = op->children.len,
+				};
+				*insert_bf_op(&builder, i + 1) = (bf_op) {
+					.op_type = BF_OP_ALTER,
+					.offset = old_offset,
+					.amount = 0,
+				};
+				op->children = builder.out;
+			}
 		}
 	}
 
