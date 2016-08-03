@@ -75,7 +75,7 @@ void execute_bf(char *restrict what) {
 	while (true) {
 #if !defined(NDEBUG) && !defined(FIXED_TAPE_SIZE)
 		if (tape.pos < bound_lower || tape.pos > bound_upper)
-			errx(2, "Bounds check failure\n");
+			errx(2, "Bounds check failure. Pos: %zd, expected <%zd - %zd>\n", tape.pos, bound_lower, bound_upper);
 #endif
 		switch (*what++) {
 			case BF_OP_ALTER: {
