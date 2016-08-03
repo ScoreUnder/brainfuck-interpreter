@@ -34,6 +34,8 @@ void free_bf(bf_op *op) {
 }
 
 /*
+ * Brainfuck basics:
+ *
  * + (*data)++
  * - (*data)--
  * > data++
