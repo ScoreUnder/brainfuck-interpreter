@@ -29,6 +29,8 @@ void usage(char *my_name, FILE *send_help_to, int exitcode) {
 			"Usage:\n"
 			"\t%s [OPTIONS...] [FILE]\n"
 			"\n"
+			"If no file is specified, brainfuck code will be read from stdin until a bang (!) is reached.\n"
+			"\n"
 			"Options:\n"
 			"\t--dump-tree       Dump the optimized representation of the brainfuck program in tree form before execution\n"
 			"\t--dump-opcodes    Dump the flat optimized representation of the brainfuck program before execution\n"
@@ -81,7 +83,7 @@ int main(int argc, char **argv){
 		file = stdin;
 	}
 
-	bf_op root = build_bf_tree(file);
+	bf_op root = build_bf_tree(file, file == stdin);
 
 	if (file != stdin)
 		fclose(file);

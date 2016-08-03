@@ -5,6 +5,6 @@
 
 #include "brainfuck.h"
 
-bf_op build_bf_tree(FILE *input);
+bf_op build_bf_tree(FILE *input, bool stop_at_bang);
 
 #endif

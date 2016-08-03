@@ -40,7 +40,7 @@ static void alloc_op_by_char(unsigned char op_char, bf_op_builder *builder) {
 		};
 }
 
-bf_op_builder build_bf_tree_internal(FILE *restrict input, bool expecting_bracket) {
+bf_op_builder build_bf_tree_internal(FILE *restrict input, bool stop_at_bang, bool expecting_bracket) {
 	bf_op_builder builder;
 	builder.alloc = 16;
 	builder.len = 0;
@@ -53,6 +53,13 @@ bf_op_builder build_bf_tree_internal(FILE *restrict input, bool expecting_bracke
 				break;
 			else
 				err(2, "could not read brainfuck code");
+		}
+
+		if (stop_at_bang && c == '!') {
+			if (expecting_bracket)
+				warnx("warning: found a bang inside a loop; ignoring.");
+			else
+				break;
 		}
 
 		if (op_type_for_char[c] == BF_OP_INVALID)
@@ -75,7 +82,7 @@ bf_op_builder build_bf_tree_internal(FILE *restrict input, bool expecting_bracke
 				op->offset--;
 				break;
 			case '[':
-				op->children = build_bf_tree_internal(input, true);
+				op->children = build_bf_tree_internal(input, stop_at_bang, true);
 				optimize_loop(&builder);
 				break;
 			case ']':
@@ -93,9 +100,9 @@ end:
 	return builder;
 }
 
-bf_op build_bf_tree(FILE *input) {
+bf_op build_bf_tree(FILE *input, bool stop_at_bang) {
 	bf_op root = {.op_type = BF_OP_ONCE};
-	root.children = build_bf_tree_internal(input, false);
+	root.children = build_bf_tree_internal(input, stop_at_bang, false);
 
 #ifndef FIXED_TAPE_SIZE
 	add_bounds_checks(&root.children);
