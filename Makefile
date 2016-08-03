@@ -16,7 +16,7 @@ endif
 
 all: $(TARGET)
 
-$(TARGET): main.o optimizer.o parser.o brainfuck.o flattener.o interpreter.o
+$(TARGET): main.o optimizer.o parser.o brainfuck.o flattener.o interpreter.o debug.o
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@
 
 %.o: %.c
