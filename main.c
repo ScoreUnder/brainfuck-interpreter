@@ -81,6 +81,9 @@ int main(int argc, char **argv){
 
 	bf_op root = build_bf_tree(&(blob_cursor){.data = map, .len = size});
 
+	munmap(map, size);
+	close(fd);
+
 	if (dump_tree)
 		print_bf_op(&root, 0);
 
@@ -101,6 +104,4 @@ int main(int argc, char **argv){
 		execute_bf(flat.data);
 
 	free(flat.data);
-	munmap(map, size);
-	close(fd);
 }
