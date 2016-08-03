@@ -10,6 +10,6 @@ typedef struct {
 	size_t pos, len;
 } blob_cursor;
 
-bf_op* build_bf_tree(blob_cursor *input, bool expecting_bracket, size_t *out_len);
+bf_op build_bf_tree(blob_cursor *input);
 
 #endif

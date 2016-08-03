@@ -39,7 +39,7 @@ static void alloc_op_by_char(unsigned char op_char, bf_op_builder *builder) {
 		};
 }
 
-bf_op* build_bf_tree(blob_cursor *restrict input, bool expecting_bracket, size_t *out_len) {
+bf_op* build_bf_tree_internal(blob_cursor *restrict input, bool expecting_bracket, size_t *out_len) {
 	bf_op_builder builder;
 	builder.alloc = 16;
 	builder.out.len = 0;
@@ -67,7 +67,7 @@ bf_op* build_bf_tree(blob_cursor *restrict input, bool expecting_bracket, size_t
 				op->offset--;
 				break;
 			case '[':
-				op->children.ops = build_bf_tree(input, true, &op->children.len);
+				op->children.ops = build_bf_tree_internal(input, true, &op->children.len);
 				optimize_loop(&builder);
 				break;
 			case ']':
@@ -85,4 +85,23 @@ end:
 		builder.out.ops = realloc(builder.out.ops, builder.out.len * sizeof *builder.out.ops + 2); // HACK: +2 to make the job easier for the bounds checker later
 	}
 	return builder.out.ops;
+}
+
+bf_op build_bf_tree(blob_cursor *restrict input) {
+	bf_op root = {.op_type = BF_OP_ONCE};
+	root.children.ops = build_bf_tree_internal(input, false, &root.children.len);
+
+#ifndef FIXED_TAPE_SIZE
+	bf_op_builder builder = {
+		.out = {
+			.ops = root.children.ops,
+			.len = root.children.len,
+		},
+		.alloc = root.children.len,
+	};
+	add_bounds_checks(&builder);
+	root.children = builder.out;
+#endif
+
+	return root;
 }

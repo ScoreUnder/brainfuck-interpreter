@@ -11,7 +11,6 @@
 
 #include "parser.h"
 #include "flattener.h"
-#include "optimizer.h"
 #include "interpreter.h"
 #include "debug.h"
 
@@ -40,20 +39,7 @@ int main(int argc, char **argv){
 	char *map = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
 	if (map == MAP_FAILED) err(1, "Can't mmap file %s", filename);
 
-	bf_op root = {.op_type = BF_OP_ONCE};
-	root.children.ops = build_bf_tree(&(blob_cursor){.data = map, .len = size}, false, &root.children.len);
-
-#ifndef FIXED_TAPE_SIZE
-	bf_op_builder builder = {
-		.out = {
-			.ops = root.children.ops,
-			.len = root.children.len,
-		},
-		.alloc = root.children.len,
-	};
-	add_bounds_checks(&builder);
-	root.children = builder.out;
-#endif
+	bf_op root = build_bf_tree(&(blob_cursor){.data = map, .len = size});
 
 #ifndef NDEBUG
 	print_bf_op(&root, 0);
