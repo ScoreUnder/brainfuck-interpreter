@@ -221,6 +221,13 @@ void optimize_loop(bf_op_builder *ops) {
 		} else if (child->op_type == BF_OP_ALTER && child->offset == 0) {
 			if (move_addition(&op->children, i))
 				i--;
+		} else if (child->op_type == BF_OP_SET
+				&& ((i + 1 < op->children.len
+						&& op->children.ops[i + 1].op_type == BF_OP_SET)
+					|| (child->amount == 0
+						&& i > 0
+						&& op->children.ops[i - 1].op_type == BF_OP_LOOP))) {
+			remove_bf_ops(&op->children, i--, 1);
 		}
 	}
 
