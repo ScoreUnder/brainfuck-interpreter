@@ -60,19 +60,26 @@ int main(int argc, char **argv){
 		}
 	}
 
-	if (argpos != argc - 1) {
-		warnx("Need exactly 1 filename");
+	if (argpos < argc - 1) {
+		warnx("Cannot handle more than 1 filename");
 		usage(stderr, 1);
 	}
 
-	char *filename = argv[argpos];
+	FILE *file;
 
-	FILE *file = fopen(filename, "r");
-	if (!file) err(1, "Can't open file %s", filename);
+	if (argpos < argc) {
+		char *filename = argv[argpos];
+		file = fopen(filename, "r");
+
+		if (!file) err(1, "Can't open file %s", filename);
+	} else {
+		file = stdin;
+	}
 
 	bf_op root = build_bf_tree(file);
 
-	fclose(file);
+	if (file != stdin)
+		fclose(file);
 
 	if (dump_tree)
 		print_bf_op(&root, 0);
