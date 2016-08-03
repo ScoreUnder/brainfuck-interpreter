@@ -164,7 +164,10 @@ error:
 		if (op->children.ops[i].offset == 0)
 			loop_increment += op->children.ops[i].amount;
 
-	if (loop_increment != (cell_int)-1) goto error;
+	bool positive;
+	if (loop_increment == (cell_int)-1) positive = true; // Take away 1 each time = use positive value of cell as loop counter
+	else if (loop_increment == 1) positive = false;
+	else goto error;
 
 	// Go along finding and removing all alter ops with the same offset
 	while (op->children.len) {
@@ -180,6 +183,7 @@ error:
 			remove_bf_ops(&op->children, i--, 1);
 		}
 
+		if (!positive) final_amount = -final_amount;
 		if (target_offset != 0) {
 			*alloc_bf_op(ops) = (bf_op) {
 				.op_type = BF_OP_MULTIPLY,
