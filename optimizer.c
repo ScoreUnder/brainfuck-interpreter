@@ -34,7 +34,7 @@ bool is_loop_alter_only(bf_op *restrict op) {
  * UNCERTAIN_BACKWARDS if the loop moves it backwards by some degree
  * UNCERTAIN_BOTH      if it's impossible to tell
  */
-int get_loop_balance(bf_op *restrict op) {
+static int get_loop_balance(bf_op *restrict op) {
 	assert(op != NULL);
 	assert(op->op_type == BF_OP_LOOP);
 	assert(op->children.len == 0 || op->children.ops != NULL);
@@ -71,7 +71,7 @@ int get_loop_balance(bf_op *restrict op) {
 	return uncertainty;
 }
 
-bool move_addition(bf_op_builder *restrict arr, size_t add_pos) {
+static bool move_addition(bf_op_builder *restrict arr, size_t add_pos) {
 	assert(add_pos < arr->len);
 	assert(arr->ops[add_pos].op_type == BF_OP_ALTER);
 	assert(arr->ops[add_pos].offset == 0);
@@ -111,7 +111,7 @@ bool move_addition(bf_op_builder *restrict arr, size_t add_pos) {
 	return true;
 }
 
-void make_offsets_absolute(bf_op *restrict op) {
+static void make_offsets_absolute(bf_op *restrict op) {
 	assert(op != NULL);
 	assert(op->op_type == BF_OP_LOOP);
 	assert(op->children.len == 0 || op->children.ops != NULL);
@@ -126,7 +126,7 @@ void make_offsets_absolute(bf_op *restrict op) {
 	}
 }
 
-void make_offsets_relative(bf_op *restrict op) {
+static void make_offsets_relative(bf_op *restrict op) {
 	assert(op != NULL);
 	assert(op->op_type == BF_OP_LOOP);
 	assert(op->children.len == 0 || op->children.ops != NULL);
@@ -141,7 +141,7 @@ void make_offsets_relative(bf_op *restrict op) {
 	}
 }
 
-bool make_loop_into_multiply(bf_op_builder *ops) {
+static bool make_loop_into_multiply(bf_op_builder *ops) {
 	assert(ops != NULL);
 	assert(ops->ops != NULL);
 	assert(ops->len > 0);
@@ -209,7 +209,7 @@ error:
 	return true;
 }
 
-bool can_merge_set_ops(bf_op_builder *restrict arr, size_t pos) {
+static bool can_merge_set_ops(bf_op_builder *restrict arr, size_t pos) {
 	// We need a lookbehind of 2
 	if (pos < 2) return false;
 
