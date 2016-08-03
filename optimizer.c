@@ -227,39 +227,37 @@ bool can_merge_set_ops(bf_op_builder *restrict arr, size_t pos) {
 	return true;
 }
 
-void optimize_loop(bf_op_builder *ops) {
-	bf_op *op = &ops->ops[ops->len - 1];
-	// Peephole optimizations that can't be done during build time
-	for (size_t i = 0; i < op->children.len; i++) {
-		bf_op *child = &op->children.ops[i];
+void peephole_optimize(bf_op_builder *ops) {
+	for (size_t i = 0; i < ops->len; i++) {
+		bf_op *child = &ops->ops[i];
 		if (child->op_type == BF_OP_ALTER
 				&& child->offset == 0 && child->amount == 0)
-			remove_bf_ops(&op->children, i--, 1);
+			remove_bf_ops(ops, i--, 1);
 		else if (child->op_type == BF_OP_MULTIPLY && child->offset == 0) {
 			child->op_type = BF_OP_LOOP;
 			child->children.ops = NULL;
 			child->children.len = 0;
 		} else if (child->op_type == BF_OP_ALTER && child->offset == 0) {
-			if (move_addition(&op->children, i))
+			if (move_addition(ops, i))
 				i--;
 		} else if (child->op_type == BF_OP_SET
-				&& ((i + 1 < op->children.len
-						&& op->children.ops[i + 1].op_type == BF_OP_SET
-						&& child->offset <= op->children.ops[i + 1].offset)
+				&& ((i + 1 < ops->len
+						&& ops->ops[i + 1].op_type == BF_OP_SET
+						&& child->offset <= ops->ops[i + 1].offset)
 					|| (child->amount == 0
 						&& child->offset == 0
 						&& i > 0
-						&& op->children.ops[i - 1].op_type == BF_OP_LOOP))) {
-			remove_bf_ops(&op->children, i--, 1);
-		} else if (can_merge_set_ops(&op->children, i)) {
-			ssize_t old_offset = op->children.ops[i - 1].offset;
-			op->children.ops[i - 2].offset += child->offset + 1;
-			remove_bf_ops(&op->children, i - 1, 2);
+						&& ops->ops[i - 1].op_type == BF_OP_LOOP))) {
+			remove_bf_ops(ops, i--, 1);
+		} else if (can_merge_set_ops(ops, i)) {
+			ssize_t old_offset = ops->ops[i - 1].offset;
+			ops->ops[i - 2].offset += child->offset + 1;
+			remove_bf_ops(ops, i - 1, 2);
 			i -= 2;
-			if (i + 1 < op->children.len && op->children.ops[i + 1].op_type == BF_OP_ALTER) {
-				op->children.ops[i + 1].offset += old_offset;
+			if (i + 1 < ops->len && ops->ops[i + 1].op_type == BF_OP_ALTER) {
+				ops->ops[i + 1].offset += old_offset;
 			} else {
-				*insert_bf_op(&op->children, i + 1) = (bf_op) {
+				*insert_bf_op(ops, i + 1) = (bf_op) {
 					.op_type = BF_OP_ALTER,
 					.offset = old_offset,
 					.amount = 0,
@@ -267,6 +265,13 @@ void optimize_loop(bf_op_builder *ops) {
 			}
 		}
 	}
+}
+
+void optimize_loop(bf_op_builder *ops) {
+	bf_op *op = &ops->ops[ops->len - 1];
+
+	// Peephole optimizations that can't be done while initially building the loop's AST
+	peephole_optimize(&op->children);
 
 	// Find common types of loop
 	if (op->children.len == 1
