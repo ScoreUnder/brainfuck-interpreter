@@ -402,28 +402,31 @@ static void peephole_optimize(bf_op_builder *ops) {
 		if (is_redundant(ops, i)) {
 			remove_bf_ops(ops, i--, 1);
 		} else if (can_merge_alters(ops, i)) {
-			merge_alters(ops, i--);
+			merge_alters(ops, i);
+			i -= 2;  // The instruction before changed too, so rerun the optimizer there
 		} else if (child->op_type == BF_OP_MULTIPLY && child->offset == 0) {
 			child->op_type = BF_OP_LOOP;
 			child->children.ops = NULL;
 			child->children.len = 0;
+			i--;
 		} else if (child->op_type == BF_OP_ALTER && child->offset == 0) {
 			if (move_addition(ops, i))
 				i--;
 		} else if (can_merge_set_ops(ops, i)) {
 			ssize_t old_offset = ops->ops[i - 1].offset;
 			ops->ops[i - 2].offset += child->offset + 1;
-			remove_bf_ops(ops, i - 1, 2);
-			i -= 2;
-			if (i + 1 < ops->len && ops->ops[i + 1].op_type == BF_OP_ALTER) {
-				ops->ops[i + 1].offset += old_offset;
+			i--;
+			remove_bf_ops(ops, i, 2);
+			if (i < ops->len && ops->ops[i].op_type == BF_OP_ALTER) {
+				ops->ops[i].offset += old_offset;
 			} else {
-				*insert_bf_op(ops, i + 1) = (bf_op) {
+				*insert_bf_op(ops, i) = (bf_op) {
 					.op_type = BF_OP_ALTER,
 					.offset = old_offset,
 					.amount = 0,
 				};
 			}
+			i -= 2;
 		}
 	}
 }
