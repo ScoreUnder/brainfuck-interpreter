@@ -10,7 +10,7 @@
  * That is, returns true if and only if the loop contains no
  * non-BF_OP_ALTER ops.
  */
-bool is_loop_alter_only(bf_op *restrict op) {
+static bool is_loop_alter_only(bf_op *restrict op) {
 	assert(op != NULL);
 	assert(op->op_type == BF_OP_LOOP);
 	assert(op->children.len == 0 || op->children.ops != NULL);
