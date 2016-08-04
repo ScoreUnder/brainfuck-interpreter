@@ -9,7 +9,6 @@
  * Determines whether a loop is "alter-only" or not.
  * That is, returns true if and only if the loop contains no
  * non-BF_OP_ALTER ops.
- *
  */
 bool is_loop_alter_only(bf_op *restrict op) {
 	assert(op != NULL);
