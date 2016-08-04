@@ -9,6 +9,7 @@ void print_bf_op(bf_op *op, int indent) {
 		case BF_OP_ONCE:
 			for (size_t i = 0; i < op->children.len; i++)
 				print_bf_op(op->children.ops + i, indent);
+			putchar('\n');
 			break;
 
 #ifndef FIXED_TAPE_SIZE
