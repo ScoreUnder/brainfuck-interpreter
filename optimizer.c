@@ -256,21 +256,35 @@ static bool is_redundant_set(bf_op_builder *restrict arr, size_t pos) {
 	return false;
 }
 
+static bool is_redundant_alter(bf_op_builder *arr, size_t pos) {
+	bf_op *op = &arr->ops[pos];
+	if (op->op_type != BF_OP_ALTER) return false;
+
+	// If this ALTER alters nothing, it's redundant
+	if (op->offset == 0 && op->amount == 0) return true;
+
+	return false;
+}
+
+static bool is_redundant(bf_op_builder *arr, size_t pos) {
+	if (is_redundant_alter(arr, pos)) return true;
+	if (is_redundant_set(arr, pos)) return true;
+
+	return false;
+}
+
 void peephole_optimize(bf_op_builder *ops) {
 	for (size_t i = 0; i < ops->len; i++) {
 		bf_op *child = &ops->ops[i];
-		if (child->op_type == BF_OP_ALTER
-				&& child->offset == 0 && child->amount == 0)
+		if (is_redundant(ops, i)) {
 			remove_bf_ops(ops, i--, 1);
-		else if (child->op_type == BF_OP_MULTIPLY && child->offset == 0) {
+		} else if (child->op_type == BF_OP_MULTIPLY && child->offset == 0) {
 			child->op_type = BF_OP_LOOP;
 			child->children.ops = NULL;
 			child->children.len = 0;
 		} else if (child->op_type == BF_OP_ALTER && child->offset == 0) {
 			if (move_addition(ops, i))
 				i--;
-		} else if (is_redundant_set(ops, i)) {
-			remove_bf_ops(ops, i--, 1);
 		} else if (can_merge_set_ops(ops, i)) {
 			ssize_t old_offset = ops->ops[i - 1].offset;
 			ops->ops[i - 2].offset += child->offset + 1;
