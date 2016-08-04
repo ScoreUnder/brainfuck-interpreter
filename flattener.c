@@ -89,6 +89,9 @@ static ssize_t flatten_bf_internal(bf_op *op, blob_cursor *out, ssize_t previous
 					*(cell_int*)&out->data[out->pos] = op->amount;
 					out->pos += sizeof(cell_int);
 					// ...and from now on it's a normal multi
+					op_start = out->pos;
+				} else {
+					op_start = -1;  // Final SET after a multiply sequence can't merge with anything
 				}
 			}
 			if (is_multi) {
@@ -102,8 +105,6 @@ static ssize_t flatten_bf_internal(bf_op *op, blob_cursor *out, ssize_t previous
 			}
 			*(cell_int*)&out->data[out->pos] = op->amount;
 			out->pos += sizeof(cell_int);
-			if (was_multiply)
-				return -1;
 			break;
 		}
 
