@@ -266,9 +266,37 @@ static bool is_redundant_alter(bf_op_builder *arr, size_t pos) {
 	return false;
 }
 
+static bool expects_nonzero(bf_op *op) {
+	switch (op->op_type) {
+		case BF_OP_LOOP:
+		case BF_OP_SKIP:
+		case BF_OP_MULTIPLY:
+			return true;
+		default:
+			return false;
+	}
+}
+
+static bool ensures_zero(bf_op *op) {
+	switch (op->op_type) {
+		case BF_OP_LOOP:
+		case BF_OP_SKIP:
+			return true;
+		case BF_OP_SET:
+			return op->amount == 0;
+		default:
+			return false;
+	}
+}
+
 static bool is_redundant(bf_op_builder *arr, size_t pos) {
 	if (is_redundant_alter(arr, pos)) return true;
 	if (is_redundant_set(arr, pos)) return true;
+
+	if (pos > 0
+			&& expects_nonzero(&arr->ops[pos])
+			&& ensures_zero(&arr->ops[pos - 1]))
+		return true;
 
 	return false;
 }
