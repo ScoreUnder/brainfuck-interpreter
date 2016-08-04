@@ -365,28 +365,38 @@ static void optimize_after_zero(bf_op_builder *ops, size_t initial_pos, bool all
 	}
 }
 
-static bool can_merge_alters(bf_op_builder *ops, size_t pos) {
+static bool can_merge_alter(bf_op_builder *ops, size_t pos) {
 	if (pos < 1) return false;
 
 	bf_op *left = &ops->ops[pos - 1];
 	bf_op *right = &ops->ops[pos];
 
-	if (left->op_type != BF_OP_ALTER) return false;
 	if (right->op_type != BF_OP_ALTER) return false;
 
-	if (left->amount != 0) return false;
+	switch (left->op_type) {
+		case BF_OP_SET:
+			if (right->offset != 0)
+				return false;
+			break;
+		case BF_OP_ALTER:
+			if (left->amount != 0 && right->offset != 0)
+				return false;
+			break;
+		default:
+			return false;
+	}
 
 	return true;
 }
 
-static void merge_alters(bf_op_builder *ops, size_t pos) {
-	assert(can_merge_alters(ops, pos));
+static void merge_alter(bf_op_builder *ops, size_t pos) {
+	assert(can_merge_alter(ops, pos));
 
 	bf_op *left = &ops->ops[pos - 1];
 	bf_op *right = &ops->ops[pos];
 
 	left->offset += right->offset;
-	left->amount = right->amount;
+	left->amount += right->amount;
 
 	remove_bf_ops(ops, pos, 1);
 }
@@ -401,8 +411,8 @@ static void peephole_optimize(bf_op_builder *ops) {
 
 		if (is_redundant(ops, i)) {
 			remove_bf_ops(ops, i--, 1);
-		} else if (can_merge_alters(ops, i)) {
-			merge_alters(ops, i);
+		} else if (can_merge_alter(ops, i)) {
+			merge_alter(ops, i);
 			i -= 2;  // The instruction before changed too, so rerun the optimizer there
 		} else if (child->op_type == BF_OP_MULTIPLY && child->offset == 0) {
 			child->op_type = BF_OP_LOOP;
