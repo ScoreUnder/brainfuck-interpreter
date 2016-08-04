@@ -36,7 +36,11 @@ static bool is_loop_alter_only(bf_op *restrict op) {
 static int get_loop_balance(bf_op *restrict op) {
 	assert(op != NULL);
 	assert(op->op_type == BF_OP_LOOP);
-	assert(op->children.len == 0 || op->children.ops != NULL);
+
+	if (op->children.len == 0)
+		return 0;
+
+	assert(op->children.ops != NULL);
 
 	int uncertainty = op->uncertainty;
 	if (uncertainty)
@@ -271,6 +275,10 @@ static bool expects_nonzero(bf_op *op) {
 		case BF_OP_SKIP:
 		case BF_OP_MULTIPLY:
 			return true;
+		case BF_OP_SET:
+			// If it's already 0, this SET wanted to change something from
+			// nonzero.
+			return op->amount == 0;
 		default:
 			return false;
 	}
@@ -288,23 +296,113 @@ static bool ensures_zero(bf_op *op) {
 	}
 }
 
+static bool writes_cell(bf_op *op) {
+	switch (op->op_type) {
+		case BF_OP_ALTER:
+			return op->amount != 0;
+		case BF_OP_LOOP:
+		case BF_OP_MULTIPLY:
+		case BF_OP_IN:
+		case BF_OP_SET:
+			return true;
+		default:
+			return false;
+	}
+}
+
 static bool is_redundant(bf_op_builder *arr, size_t pos) {
 	if (is_redundant_alter(arr, pos)) return true;
 	if (is_redundant_set(arr, pos)) return true;
 
-	if (pos > 0
-			&& expects_nonzero(&arr->ops[pos])
-			&& ensures_zero(&arr->ops[pos - 1]))
-		return true;
-
 	return false;
+}
+
+static bool moves_tape(bf_op *op) {
+	switch (op->op_type) {
+		case BF_OP_SKIP:
+			return true;
+		case BF_OP_ALTER:
+			return op->offset != 0;
+		case BF_OP_LOOP:
+			return get_loop_balance(op) != 0;
+		default:
+			return false;
+	}
+}
+
+static void optimize_after_zero(bf_op_builder *ops, size_t initial_pos, bool all_zeros) {
+	for (size_t pos = initial_pos; pos < ops->len; pos++) {
+		// Skip anything that doesn't write nonzero but also can't be removed
+		while (pos < ops->len
+				&& (ensures_zero(&ops->ops[pos]) || !writes_cell(&ops->ops[pos]))  // ← doesn't write zero
+				&& !expects_nonzero(&ops->ops[pos])
+				&& (all_zeros || !moves_tape(&ops->ops[pos]))) {  // ← can't be removed
+			pos++;
+		}
+
+		if (expects_nonzero(&ops->ops[pos])) {
+			// If we stopped because we can remove ops, remove them
+			size_t start = pos;
+
+			// Find out what can be removed
+			while (pos < ops->len && expects_nonzero(&ops->ops[pos])) {
+				pos++;
+			}
+
+			if (start != pos) {
+				remove_bf_ops(ops, start, pos - start);
+				pos = start - 1;
+			}
+		} else {
+			// Stop if we can't be sure the current cell is 0 any more
+			if (writes_cell(&ops->ops[pos]) && !ensures_zero(&ops->ops[pos]) )
+				break;
+
+			// Similarly, if we've moved away from a known 0, stop
+			if (!all_zeros && moves_tape(&ops->ops[pos]))
+				break;
+		}
+	}
+}
+
+static bool can_merge_alters(bf_op_builder *ops, size_t pos) {
+	if (pos < 1) return false;
+
+	bf_op *left = &ops->ops[pos - 1];
+	bf_op *right = &ops->ops[pos];
+
+	if (left->op_type != BF_OP_ALTER) return false;
+	if (right->op_type != BF_OP_ALTER) return false;
+
+	if (left->amount != 0) return false;
+
+	return true;
+}
+
+static void merge_alters(bf_op_builder *ops, size_t pos) {
+	assert(can_merge_alters(ops, pos));
+
+	bf_op *left = &ops->ops[pos - 1];
+	bf_op *right = &ops->ops[pos];
+
+	left->offset += right->offset;
+	left->amount = right->amount;
+
+	remove_bf_ops(ops, pos, 1);
 }
 
 static void peephole_optimize(bf_op_builder *ops) {
 	for (size_t i = 0; i < ops->len; i++) {
 		bf_op *child = &ops->ops[i];
+
+		if (ensures_zero(child)) {
+			optimize_after_zero(ops, i + 1, false);
+		}
+
 		if (is_redundant(ops, i)) {
 			remove_bf_ops(ops, i--, 1);
+		} else if (can_merge_alters(ops, i)) {
+			merge_alters(ops, i--);
 		} else if (child->op_type == BF_OP_MULTIPLY && child->offset == 0) {
 			child->op_type = BF_OP_LOOP;
 			child->children.ops = NULL;
@@ -350,6 +448,10 @@ void optimize_loop(bf_op_builder *ops) {
 }
 
 void optimize_root(bf_op_builder *ops) {
+	// Clear out instructions we know are redundant when beginning
+	optimize_after_zero(ops, 0, true);
+
+	// Run peephole optimizer (required for flattener to function at all)
 	peephole_optimize(ops);
 }
 
