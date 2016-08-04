@@ -300,7 +300,7 @@ static bool is_redundant(bf_op_builder *arr, size_t pos) {
 	return false;
 }
 
-void peephole_optimize(bf_op_builder *ops) {
+static void peephole_optimize(bf_op_builder *ops) {
 	for (size_t i = 0; i < ops->len; i++) {
 		bf_op *child = &ops->ops[i];
 		if (is_redundant(ops, i)) {
@@ -347,6 +347,10 @@ void optimize_loop(bf_op_builder *ops) {
 	} else if (make_loop_into_multiply(ops)) {
 		return;
 	}
+}
+
+void optimize_root(bf_op_builder *ops) {
+	peephole_optimize(ops);
 }
 
 static bool directions_agree(ssize_t a, ssize_t b) {

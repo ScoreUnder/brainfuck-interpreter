@@ -103,7 +103,8 @@ end:
 bf_op build_bf_tree(FILE *input, bool stop_at_bang) {
 	bf_op root = {.op_type = BF_OP_ONCE};
 	root.children = build_bf_tree_internal(input, stop_at_bang, false);
-	peephole_optimize(&root.children);
+
+	optimize_root(&root.children);
 
 #ifndef FIXED_TAPE_SIZE
 	add_bounds_checks(&root.children);
