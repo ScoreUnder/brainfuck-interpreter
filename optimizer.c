@@ -350,6 +350,12 @@ void optimize_loop(bf_op_builder *ops) {
 	}
 }
 
+static bool directions_agree(ssize_t a, ssize_t b) {
+	if (a < 0 && b < 0) return true;
+	if (a > 0 && b > 0) return true;
+	return  false;
+}
+
 static void make_bound_check(bf_op_builder *ops, size_t pos, ssize_t bound) {
 	*insert_bf_op(ops, pos) = (bf_op) {
 		.op_type = BF_OP_BOUNDS_CHECK,
@@ -362,26 +368,33 @@ static size_t check_for_bound_check(bf_op_builder *ops_arr, size_t index, int di
 
 	for (size_t j = index; j < ops_arr->len && j < index + 2; j++) {
 		bf_op *op = &ops_arr->ops[j];
-		if (op->op_type == BF_OP_BOUNDS_CHECK
-				&& ((op->offset < 0 && direction == -1)
-					|| (op->offset > 0 && direction == 1)))
+		if (op->op_type == BF_OP_BOUNDS_CHECK && directions_agree(op->offset, direction))
 			return j;
 	}
 	return (size_t) -1;
 }
 
+static void overwrite_bound_check_if_necessary(bf_op *bound_check_op, ssize_t bound) {
+	// Only replace the bounds check if our bound is "farther" in the
+	// direction the bounds check is already checking in.
+	if (directions_agree(bound - bound_check_op->offset, bound_check_op->offset)) {
+		bound_check_op->offset = bound;
+	}
+}
+
 static size_t reuse_or_make_bound_check(bf_op_builder *ops, size_t index, int bound, int direction) {
 	assert(bound != 0);
+	assert(directions_agree(bound, direction));
+	(void) direction;  // direction is unused in NDEBUG builds
+
 	size_t bound_check = check_for_bound_check(ops, index, bound > 0 ? 1 : -1);
 	if (bound_check == (size_t) -1) {
 		make_bound_check(ops, index, bound);
 		return 1;
 	} else {
 		bf_op *bound_check_op = &ops->ops[bound_check];
-		if ((bound > bound_check_op->offset && direction > 0)
-				|| (bound < bound_check_op->offset && direction < 0)) {
-			bound_check_op->offset = bound;
-		}
+
+		overwrite_bound_check_if_necessary(bound_check_op, bound);
 		return 0;
 	}
 }
@@ -393,10 +406,9 @@ static size_t pull_bound_check(bf_op_builder *ops, size_t *call_op_index, size_t
 	size_t inner_bound_check = check_for_bound_check(&op->children, 0, direction);
 	if (inner_bound_check != (size_t)-1) {
 		ssize_t inner_bound_offset = op->children.ops[inner_bound_check].offset + current_offset;
-		// Bounds check found, find somewhere to put it (or make that place)
-		if ((inner_bound_offset > 0 && direction > 0)
-				|| (inner_bound_offset < 0 && direction < 0)) {
-			// The bounds check may need to be created or updated
+		// Does the inner bound check still point the same way after adding our current offset?
+		if (directions_agree(inner_bound_offset, direction)) {
+			// The outer bound check may need to be created or updated
 			size_t bound_check = check_for_bound_check(ops, i, direction);
 			if (bound_check == (size_t)-1) {
 				make_bound_check(ops, i, inner_bound_offset);
@@ -408,13 +420,9 @@ static size_t pull_bound_check(bf_op_builder *ops, size_t *call_op_index, size_t
 				bound_check = i;
 			}
 			bf_op *restrict bound_op = &ops->ops[bound_check];
-			assert((bound_op->offset > 0 && direction > 0)
-					|| (bound_op->offset < 0 && direction < 0));
-			if ((direction > 0 && inner_bound_offset > bound_op->offset)
-					|| (direction < 0 && inner_bound_offset < bound_op->offset)) {
-				bound_op->offset = inner_bound_offset;
-				assert(bound_op->offset != 0);
-			}
+			assert(directions_agree(bound_op->offset, direction));
+
+			overwrite_bound_check_if_necessary(bound_op, inner_bound_offset);
 		}
 		remove_bf_ops(&op->children, inner_bound_check, 1);
 	}
