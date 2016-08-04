@@ -151,6 +151,10 @@ static bool make_loop_into_multiply(bf_op_builder *ops) {
 
 	assert(op->op_type == BF_OP_LOOP);
 
+	// Infinite loops don't apply, of course
+	if (op->children.len == 0) return false;
+
+	// Nor do loops which do things like I/O or nested loops
 	if (!is_loop_alter_only(op)) return false;
 
 	make_offsets_absolute(op);
