@@ -14,23 +14,26 @@ trap cleanup EXIT
 trap 'exit 1' INT HUP TERM PIPE
 output=$(mktemp) || exit
 
+# Writes to global "reason"
 test_file() {
     local script expected
     script=$1 expected=$2
-    "$executable" "$script" >"$output" || { reason=error; return 2; }
+    shift 2
+
+    "$executable" "$@" "$script" >"$output" || { reason=error; return 2; }
     cmp -s "$output" "$expected" || { reason=fail; return 1; }
     reason=OK
     return 0
 }
 
-count=0 failures=0
-for f in "$test_dir"/*.bf; do
-    failed=false
+# Writes to global "failures", "count"
+test_and_compare() {
+    local script expected
+    script=$1 expected=$2 why=$3
+    shift 3
 
-    expected=${f%.bf}.out
-
-    test_file "$f" "$expected" || failed=true
-    printf '%20s: %s\n' "${f#"$test_dir"/}" "$reason"
+    test_file "$script" "$expected" "$@" || failed=true
+    printf '%s %20s: %s\n' "$why" "${f#"$test_dir"/}" "$reason"
 
     if $failed; then
         failures=$((failures + 1))
@@ -39,6 +42,20 @@ for f in "$test_dir"/*.bf; do
     fi
 
     count=$((count + 1))
+}
+
+count=0 failures=0
+for f in "$test_dir"/*.bf; do
+    failed=false
+
+    expected=${f%.bf}.out
+    [ -e "$expected" ] && test_and_compare "$f" "$expected" RUN
+
+    expected=${f%.bf}.ast
+    [ -e "$expected" ] && test_and_compare "$f" "$expected" AST --no-execute --dump-tree
+
+    expected=${f%.bf}.ops
+    [ -e "$expected" ] && test_and_compare "$f" "$expected" OPS --no-execute --dump-opcodes
 done
 
 if [ "$failures" -eq 0 ]; then
