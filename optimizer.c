@@ -342,7 +342,10 @@ static void peephole_optimize(bf_op_builder *ops, bool starts_nonzero) {
 			child->children.len = 0;
 			i--;
 		} else if (child->op_type == BF_OP_ALTER && child->offset == 0) {
-			if (move_addition(ops, i))
+			if (child->definitely_zero) {
+				child->op_type = BF_OP_SET;
+				i--;
+			} else if (move_addition(ops, i))
 				i--;
 		} else if (can_merge_set_ops(ops, i)) {
 			ssize_t old_offset = ops->ops[i - 1].offset;
