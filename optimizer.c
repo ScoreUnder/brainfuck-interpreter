@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "optimizer.h"
+#include "optimizer_helpers.h"
 #include "parser.h"
 
 /*
@@ -20,58 +21,6 @@ static bool is_loop_alter_only(bf_op *restrict op) {
 			return false;
 
 	return true;
-}
-
-#define UNCERTAIN_FORWARDS  1
-#define UNCERTAIN_BACKWARDS 2
-#define UNCERTAIN_BOTH      3
-#define UNCERTAINTY_PRESENT 4
-/*
- * Returns:
- * 0                   if the loop does not end up moving the data pointer
- * UNCERTAIN_FORWARDS  if the loop moves it forwards by some degree
- * UNCERTAIN_BACKWARDS if the loop moves it backwards by some degree
- * UNCERTAIN_BOTH      if it's impossible to tell
- */
-static int get_loop_balance(bf_op *restrict op) {
-	assert(op != NULL);
-	assert(op->op_type == BF_OP_LOOP);
-
-	if (op->children.len == 0)
-		return 0;
-
-	assert(op->children.ops != NULL);
-
-	int uncertainty = op->uncertainty;
-	if (uncertainty)
-		return uncertainty & UNCERTAIN_BOTH;
-
-	ssize_t balance = 0;
-
-	for (size_t i = 0; i < op->children.len; i++) {
-		bf_op *child = &op->children.ops[i];
-		if (child->op_type == BF_OP_ALTER)
-			balance += child->offset;
-		else if (child->op_type == BF_OP_SKIP) {
-			assert(child->offset != 0);
-			if (child->offset > 0)
-				uncertainty |= UNCERTAIN_FORWARDS;
-			else
-				uncertainty |= UNCERTAIN_BACKWARDS;
-
-			if (uncertainty == UNCERTAIN_BOTH) break;
-		} else if (child->op_type == BF_OP_LOOP) {
-			uncertainty |= get_loop_balance(child);
-			if (uncertainty == UNCERTAIN_BOTH) break;
-		}
-	}
-
-	if (balance > 0)
-		uncertainty |= UNCERTAIN_FORWARDS;
-	else if (balance < 0)
-		uncertainty |= UNCERTAIN_BACKWARDS;
-	op->uncertainty = uncertainty | UNCERTAINTY_PRESENT;
-	return uncertainty;
 }
 
 static bool move_addition(bf_op_builder *restrict arr, size_t add_pos) {
@@ -275,41 +224,6 @@ static bool expects_nonzero(bf_op *op) {
 	}
 }
 
-static bool ensures_zero(bf_op *op) {
-	switch (op->op_type) {
-		case BF_OP_LOOP:
-		case BF_OP_SKIP:
-			return true;
-		case BF_OP_SET:
-			return op->amount == 0;
-		default:
-			return false;
-	}
-}
-
-static bool ensures_nonzero(bf_op *op) {
-	switch (op->op_type) {
-		case BF_OP_SET:
-			return op->amount != 0;
-		default:
-			return false;
-	}
-}
-
-static bool writes_cell(bf_op *op) {
-	switch (op->op_type) {
-		case BF_OP_ALTER:
-			return op->amount != 0;
-		case BF_OP_LOOP:
-		case BF_OP_MULTIPLY:
-		case BF_OP_IN:
-		case BF_OP_SET:
-			return true;
-		default:
-			return false;
-	}
-}
-
 static bool is_redundant(bf_op_builder *arr, size_t pos) {
 	if (is_redundant_alter(arr, pos)) return true;
 
@@ -317,19 +231,6 @@ static bool is_redundant(bf_op_builder *arr, size_t pos) {
 	if (op->definitely_zero && expects_nonzero(op)) return true;
 
 	return false;
-}
-
-static bool moves_tape(bf_op *op) {
-	switch (op->op_type) {
-		case BF_OP_SKIP:
-			return true;
-		case BF_OP_ALTER:
-			return op->offset != 0;
-		case BF_OP_LOOP:
-			return get_loop_balance(op) != 0;
-		default:
-			return false;
-	}
 }
 
 static void mark_as_zero(bf_op_builder *ops, size_t initial_pos, bool all_zeros) {
