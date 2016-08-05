@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdbool.h>
 
+#include "optimizer_helpers.h"
 #include "flattener.h"
 
 static void blob_ensure_extra(blob_cursor *out, size_t extra) {
@@ -8,6 +9,20 @@ static void blob_ensure_extra(blob_cursor *out, size_t extra) {
 		out->len *= 2;
 		out->data = realloc(out->data, out->len);
 	}
+}
+
+static bool loops_only_once(bf_op *loop) {
+	assert(loop->op_type == BF_OP_LOOP);
+
+	if (loop->children.len == 0) return false;
+
+	bf_op *last = &loop->children.ops[loop->children.len - 1];
+	if (ensures_zero(last))
+		return true;
+	if (last->definitely_zero && !moves_tape(last) && !writes_cell(last))
+		return true;
+
+	return false;
 }
 
 static ssize_t flatten_bf_internal(bf_op *op, blob_cursor *out, ssize_t previous_op) {
@@ -37,37 +52,40 @@ static ssize_t flatten_bf_internal(bf_op *op, blob_cursor *out, ssize_t previous
 			break;
 
 		case BF_OP_LOOP: {
-			blob_ensure_extra(out, sizeof(ssize_t) + 1);
 			size_t loop_start = out->pos;
-			out->data[out->pos++] = BF_OP_JUMPIFZERO;
-			out->pos += sizeof(ssize_t);
+			bool have_initial_jump = !op->definitely_nonzero;
+			if (have_initial_jump) {
+				blob_ensure_extra(out, sizeof(ssize_t) + 1);
+				out->data[out->pos++] = BF_OP_JUMPIFZERO;
+				out->pos += sizeof(ssize_t);
+			}
+			size_t loop_body_start = out->pos;
 
 			ssize_t previous_op = -1;
 			for (size_t i = 0; i < op->children.len; i++)
 				previous_op = flatten_bf_internal(&op->children.ops[i], out, previous_op);
 
-			if (previous_op == -1 || out->data[previous_op] != BF_OP_JUMPIFNONZERO) {
+			bool have_final_jump = !loops_only_once(op);
+			if (have_final_jump) {
 				blob_ensure_extra(out, sizeof(ssize_t) + 1);
-				op_start = out->pos; // Some things might want to merge with our JNZ
 				out->data[out->pos++] = BF_OP_JUMPIFNONZERO;
 				out->pos += sizeof(ssize_t);
-			} else {
-				// Merge with the previous JNZ
-				op_start = previous_op;
 			}
 
 			// Difference between end of first jump instruction and here
-			ssize_t jump_distance = out->pos - loop_start - 1 - sizeof(ssize_t);
-			*(ssize_t*)&out->data[loop_start + 1] = jump_distance;
+			ssize_t jump_distance = out->pos - loop_body_start;
+			if (have_initial_jump)
+				*(ssize_t*)&out->data[loop_start + 1] = jump_distance;
 
-			if (previous_op == -1 || out->data[previous_op] != BF_OP_JUMPIFNONZERO) {
+			if (have_final_jump) {
 				// On the nonzero jump, skip all jump-if-zeros because they will never fire
 				while (out->data[out->pos - jump_distance] == BF_OP_JUMPIFZERO) {
 					jump_distance -= sizeof(ssize_t) + 1;
 				}
 				*(ssize_t*)&out->data[out->pos - sizeof(ssize_t)] = -jump_distance;
 			}
-			break;
+			// Can't merge with loops (or "if"s)
+			return -1;
 		}
 
 		case BF_OP_ONCE: {

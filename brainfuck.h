@@ -2,6 +2,7 @@
 #define USING_BRAINFUCK_H
 
 #include <stdint.h>
+#include <stdbool.h>
 #include <sys/types.h>
 #include <stdlib.h>
 
@@ -39,6 +40,9 @@ typedef struct {
 
 typedef struct s_bf_op {
 	enum bf_op_type op_type;
+
+	bool definitely_zero : 1;
+	bool definitely_nonzero : 1;
 
 	union {
 		struct {
