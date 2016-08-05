@@ -275,7 +275,7 @@ static bool can_merge_alter(bf_op_builder *ops, size_t pos) {
 
 	switch (left->op_type) {
 		case BF_OP_SET:
-			if (right->offset != 0)
+			if (left->offset != 0 || right->offset != 0)
 				return false;
 			break;
 		case BF_OP_ALTER:

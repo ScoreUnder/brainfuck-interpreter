@@ -1,0 +1,28 @@
+BOUND[-1] BOUND[1] >1_+1 <1_+1 [
+  BOUND[1] >1_-1 
+] (uncertainties: >)
+BOUND[1] >1 [
+  BOUND[2] -1 >2_+1 <1 
+] (uncertainties: >)
+<1_+1 <1 [
+  BOUND[1] >1_-1 
+] (uncertainties: >)
+BOUND[1] >1 [
+  BOUND[2] -1 >1_+1 >1 [
+    BOUND[-1] <1_-1 
+  ] (uncertainties: <)
+  BOUND[-1] <1 S-1 >1 *1_@-1 SET0,+0 
+] (uncertainties: <>)
+BOUND[-1] <1_-1 [
+  BOUND[4] +1 >4 SET0,+1 SET1,+0 <1 [
+    BOUND[1] >1_-1 
+  ] (uncertainties: >)
+  BOUND[1] >1 [
+    BOUND[2] -1 >1_+1 >1 [
+      BOUND[-1] <1_-1 
+    ] (uncertainties: <)
+    BOUND[-1] <1 S-1 >1 *1_@-1 SET0,+0 
+  ] (uncertainties: <>)
+  BOUND[-1] <1_-1 
+] (uncertainties: <>)
+BOUND[-1] <1 
