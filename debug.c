@@ -3,6 +3,7 @@
 #include <stdio.h>
 
 #include "debug.h"
+#include "optimizer_helpers.h"
 
 void print_bf_op(bf_op *op, int indent) {
 	switch (op->op_type) {
@@ -56,8 +57,9 @@ void print_bf_op(bf_op *op, int indent) {
 			}
 			indent -= 2;
 			printf("\n%*s] (uncertainties: ", indent, "");
-			if (op->uncertainty & 2) putchar('<');
-			if (op->uncertainty & 1) putchar('>');
+			loop_info info = get_loop_info(op);
+			if (info.uncertain_backwards) putchar('<');
+			if (info.uncertain_forwards) putchar('>');
 			printf(")\n%*s", indent, "");
 			break;
 

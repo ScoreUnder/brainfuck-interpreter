@@ -51,7 +51,7 @@ static ssize_t flatten_bf_internal(bf_op *op, blob_cursor *out, ssize_t previous
 			for (size_t i = 0; i < op->children.len; i++)
 				previous_op = flatten_bf_internal(&op->children.ops[i], out, previous_op);
 
-			bool have_final_jump = !loops_only_once(op);
+			bool have_final_jump = !get_loop_info(op).loops_once_at_most;
 			if (have_final_jump) {
 				blob_ensure_extra(out, sizeof(ssize_t) + 1);
 				out->data[out->pos++] = BF_OP_JUMPIFNONZERO;

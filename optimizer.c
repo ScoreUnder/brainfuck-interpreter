@@ -303,7 +303,7 @@ static void merge_alter(bf_op_builder *ops, size_t pos) {
 static bool loops_exactly_once(bf_op *op) {
 	if (op->op_type != BF_OP_LOOP) return false;
 	if (!op->definitely_nonzero) return false;
-	return loops_only_once(op);
+	return get_loop_info(op).loops_once_at_most;
 }
 
 static void remove_looping(bf_op_builder *ops, size_t loop_pos) {
@@ -578,14 +578,20 @@ void add_bounds_checks(bf_op_builder *ops) {
 			add_bounds_checks(&op->children);
 
 			// Serious hacks round 2: pull bounds checks from the beginning of the loop
-			int uncertainty = get_loop_balance(op);
+			loop_info info = get_loop_info(op);
 
 			assert(!have_bound_at(ops, last_certain_backwards - 1, -1));
-			if ((uncertainty & UNCERTAIN_BACKWARDS) == 0) {
+			if (!info.uncertain_backwards || (!info.inner_uncertain_backwards && info.loops_once_at_most)) {
 				size_t shift = pull_bound_check(ops, &this_op_pos, last_certain_backwards, curr_off_bck, -1);
 				pos += shift;
 				if (last_certain_forwards > last_certain_backwards)
 					last_certain_forwards += shift;
+
+				curr_off_bck += info.offset_lower;
+				if (curr_off_bck < 0) {
+					assert(check_for_bound_check(ops, last_certain_backwards, -1) != (size_t) -1);
+					assert(ops->ops[check_for_bound_check(ops, last_certain_backwards, -1)].offset <= curr_off_bck);
+				}
 			} else {
 				last_certain_backwards = pos;
 				curr_off_bck = 0;
@@ -593,11 +599,17 @@ void add_bounds_checks(bf_op_builder *ops) {
 			assert(!have_bound_at(ops, last_certain_backwards - 1, -1));
 
 			assert(!have_bound_at(ops, last_certain_forwards - 1, 1));
-			if ((uncertainty & UNCERTAIN_FORWARDS) == 0) {
+			if (!info.uncertain_forwards || (!info.inner_uncertain_forwards && info.loops_once_at_most)) {
 				size_t shift = pull_bound_check(ops, &this_op_pos, last_certain_forwards, curr_off_fwd, 1);
 				pos += shift;
 				if (last_certain_backwards > last_certain_forwards)
 					last_certain_backwards += shift;
+
+				curr_off_fwd += info.offset_upper;
+				if (curr_off_fwd > 0) {
+					assert(check_for_bound_check(ops, last_certain_forwards, 1) != (size_t) -1);
+					assert(ops->ops[check_for_bound_check(ops, last_certain_forwards, 1)].offset >= curr_off_fwd);
+				}
 			} else {
 				last_certain_forwards = pos;
 				curr_off_fwd = 0;

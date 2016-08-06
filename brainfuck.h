@@ -38,6 +38,16 @@ typedef struct {
 	size_t alloc;
 } bf_op_builder;
 
+typedef struct {
+	ssize_t offset_lower, offset_upper;  // Final offset before things became uncertain (lower and upper estimates)
+	bool calculated : 1;  // If this structure is already populated
+	bool uncertain_forwards : 1;  // If the loop moves the data pointer forwards by some degree
+	bool uncertain_backwards : 1;  // If the loop moves the data pointer backwards by some degree
+	bool inner_uncertain_forwards : 1;  // If a single iteration of the loop moves the data pointer forwards by an unknown amount
+	bool inner_uncertain_backwards : 1;  // If a single iteration of the loop moves the data pointer backwards by an unknown amount
+	bool loops_once_at_most : 1;  // If the loop does not execute more than once
+} loop_info;
+
 typedef struct s_bf_op {
 	enum bf_op_type op_type;
 
@@ -47,7 +57,7 @@ typedef struct s_bf_op {
 	union {
 		struct {
 			bf_op_builder children;  // Applies to LOOPs and ONCE only
-			int uncertainty;  // Applies to LOOPs only
+			loop_info info;  // Applies to LOOPs only
 		};
 		struct { // Applies to most things but notably not LOOPs or ONCE
 			ssize_t offset;

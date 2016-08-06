@@ -46,8 +46,10 @@ bool moves_tape(bf_op *op) {
 			return true;
 		case BF_OP_ALTER:
 			return op->offset != 0;
-		case BF_OP_LOOP:
-			return get_loop_balance(op) != 0;
+		case BF_OP_LOOP: {
+			loop_info info = get_loop_info(op);
+			return info.uncertain_forwards || info.uncertain_backwards;
+		}
 		case BF_OP_IN:
 		case BF_OP_OUT:
 		case BF_OP_SET:
@@ -59,55 +61,7 @@ bool moves_tape(bf_op *op) {
 	}
 }
 
-/*
- * Returns:
- * 0                   if the loop does not end up moving the data pointer
- * UNCERTAIN_FORWARDS  if the loop moves it forwards by some degree
- * UNCERTAIN_BACKWARDS if the loop moves it backwards by some degree
- * UNCERTAIN_BOTH      if it's impossible to tell
- */
-int get_loop_balance(bf_op *restrict op) {
-	assert(op != NULL);
-	assert(op->op_type == BF_OP_LOOP);
-
-	if (op->children.len == 0)
-		return 0;
-
-	assert(op->children.ops != NULL);
-
-	int uncertainty = op->uncertainty;
-	if (uncertainty)
-		return uncertainty & UNCERTAIN_BOTH;
-
-	ssize_t balance = 0;
-
-	for (size_t i = 0; i < op->children.len; i++) {
-		bf_op *child = &op->children.ops[i];
-		if (child->op_type == BF_OP_ALTER)
-			balance += child->offset;
-		else if (child->op_type == BF_OP_SKIP) {
-			assert(child->offset != 0);
-			if (child->offset > 0)
-				uncertainty |= UNCERTAIN_FORWARDS;
-			else
-				uncertainty |= UNCERTAIN_BACKWARDS;
-
-			if (uncertainty == UNCERTAIN_BOTH) break;
-		} else if (child->op_type == BF_OP_LOOP) {
-			uncertainty |= get_loop_balance(child);
-			if (uncertainty == UNCERTAIN_BOTH) break;
-		}
-	}
-
-	if (balance > 0)
-		uncertainty |= UNCERTAIN_FORWARDS;
-	else if (balance < 0)
-		uncertainty |= UNCERTAIN_BACKWARDS;
-	op->uncertainty = uncertainty | UNCERTAINTY_PRESENT;
-	return uncertainty;
-}
-
-bool loops_only_once(bf_op *loop) {
+static bool loops_once_at_most(bf_op *loop) {
 	assert(loop->op_type == BF_OP_LOOP);
 
 	if (loop->children.len == 0) return false;
@@ -119,4 +73,61 @@ bool loops_only_once(bf_op *loop) {
 		return true;
 
 	return false;
+}
+
+loop_info get_loop_info(bf_op *restrict op) {
+	assert(op != NULL);
+	assert(op->op_type == BF_OP_LOOP);
+	assert(op->children.ops != NULL || op->children.len == 0);
+
+	loop_info info = op->info;
+
+	if (info.calculated)
+		return info;
+
+	for (size_t i = 0; i < op->children.len; i++) {
+		bf_op *child = &op->children.ops[i];
+		if (child->op_type == BF_OP_ALTER) {
+			if (!info.inner_uncertain_backwards)
+				info.offset_lower += child->offset;
+			if (!info.inner_uncertain_forwards)
+				info.offset_upper += child->offset;
+		} else if (child->op_type == BF_OP_SKIP) {
+			assert(child->offset != 0);
+			if (child->offset > 0) {
+				info.inner_uncertain_forwards = true;
+			} else {
+				info.inner_uncertain_backwards = true;
+			}
+
+			if (info.inner_uncertain_forwards && info.inner_uncertain_backwards) break;
+		} else if (child->op_type == BF_OP_LOOP) {
+			loop_info child_info = get_loop_info(child);
+			if (child_info.loops_once_at_most) {
+				if (child_info.inner_uncertain_forwards) {
+					info.inner_uncertain_forwards = true;
+				} else if (info.offset_upper > 0) {
+					info.offset_upper += child_info.offset_upper;
+				}
+				if (child_info.inner_uncertain_backwards) {
+					info.inner_uncertain_backwards = true;
+				} else if (info.offset_lower < 0) {
+					info.offset_lower += child_info.offset_lower;
+				}
+			} else {
+				info.inner_uncertain_forwards  |= child_info.uncertain_forwards;
+				info.inner_uncertain_backwards |= child_info.uncertain_backwards;
+			}
+
+			if (info.uncertain_forwards && info.uncertain_backwards) break;
+		}
+	}
+
+	info.loops_once_at_most = loops_once_at_most(op);
+
+	info.uncertain_forwards = info.offset_upper > 0 || info.inner_uncertain_forwards;
+	info.uncertain_backwards = info.offset_lower < 0 || info.inner_uncertain_backwards;
+	info.calculated = true;
+	op->info = info;
+	return info;
 }
