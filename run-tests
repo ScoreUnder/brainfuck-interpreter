@@ -14,6 +14,8 @@ trap cleanup EXIT
 trap 'exit 1' INT HUP TERM PIPE
 output=$(mktemp) || exit
 
+accept_failures=false
+
 escape=$(printf \\033)
 
 # Writes to global "reason"
@@ -41,10 +43,15 @@ test_and_compare() {
         failures=$((failures + 1))
         echo 'Difference between expected and actual output:'
         diff -u "$expected" "$output" | sed "s/$escape/^[/g" | "$colordiff"
+        $accept_failures && cp "$output" "$expected"
     fi
 
     count=$((count + 1))
 }
+
+if [ "$1" = --accept-failures ]; then
+    accept_failures=true
+fi
 
 count=0 failures=0
 for f in "$test_dir"/*.bf; do
