@@ -18,14 +18,14 @@ accept_failures=false
 
 escape=$(printf \\033)
 
-# Writes to global "reason"
+# Writes to global "reason", "error", "failed"
 test_file() {
     local script expected
     script=$1 expected=$2
     shift 2
 
-    "$executable" "$@" "$script" >"$output" || { reason=error; return 2; }
-    cmp -s "$output" "$expected" || { reason=fail; return 1; }
+    "$executable" "$@" "$script" >"$output" || { reason=error; error=true; return 2; }
+    cmp -s "$output" "$expected" || { reason=fail; failed=true; return 1; }
     reason=OK
     return 0
 }
@@ -36,14 +36,19 @@ test_and_compare() {
     script=$1 expected=$2 why=$3
     shift 3
 
-    test_file "$script" "$expected" "$@" || failed=true
+    error=false
+    failed=false
+
+    test_file "$script" "$expected" "$@"
     printf '%s %20s: %s\n' "$why" "${f#"$test_dir"/}" "$reason"
 
-    if $failed; then
+    if $failed || $error; then
         failures=$((failures + 1))
-        echo 'Difference between expected and actual output:'
-        diff -u "$expected" "$output" | sed "s/$escape/^[/g" | "$colordiff"
-        $accept_failures && cp "$output" "$expected"
+        if ! $error; then
+            echo 'Difference between expected and actual output:'
+            diff -u "$expected" "$output" | sed "s/$escape/^[/g" | "$colordiff"
+            $accept_failures && cp "$output" "$expected"
+        fi
     fi
 
     count=$((count + 1))
@@ -55,8 +60,6 @@ fi
 
 count=0 failures=0
 for f in "$test_dir"/*.bf; do
-    failed=false
-
     expected=${f%.bf}.out
     [ -e "$expected" ] && test_and_compare "$f" "$expected" RUN
 
