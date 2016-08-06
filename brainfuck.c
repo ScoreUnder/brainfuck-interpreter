@@ -20,17 +20,20 @@ bf_op* alloc_bf_op(bf_op_builder *ops) {
 	return &ops->ops[ops->len++];
 }
 
-bf_op* insert_bf_op(bf_op_builder *ops, size_t index) {
+bf_op* insert_bf_ops(bf_op_builder *ops, size_t index, size_t count) {
 	assert(ops != NULL);
 	assert(ops->ops != NULL);
 	assert(ops->alloc != 0);
 
-	if (ops->len == ops->alloc) {
-		ops->alloc *= 2;
+	if (ops->len + count > ops->alloc) {
+		while (ops->len + count > ops->alloc) {
+			ops->alloc *= 2;
+		}
 		ops->ops = realloc(ops->ops, ops->alloc * sizeof *ops->ops);
 	}
-	memmove(ops->ops + index + 1, ops->ops + index, (ops->len - index) * sizeof *ops->ops);
-	ops->len++;
+
+	memmove(ops->ops + index + count, ops->ops + index, (ops->len - index) * sizeof *ops->ops);
+	ops->len += count;
 	return &ops->ops[index];
 }
 

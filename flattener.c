@@ -11,20 +11,6 @@ static void blob_ensure_extra(blob_cursor *out, size_t extra) {
 	}
 }
 
-static bool loops_only_once(bf_op *loop) {
-	assert(loop->op_type == BF_OP_LOOP);
-
-	if (loop->children.len == 0) return false;
-
-	bf_op *last = &loop->children.ops[loop->children.len - 1];
-	if (ensures_zero(last))
-		return true;
-	if (last->definitely_zero && !moves_tape(last) && !writes_cell(last))
-		return true;
-
-	return false;
-}
-
 static ssize_t flatten_bf_internal(bf_op *op, blob_cursor *out, ssize_t previous_op) {
 	ssize_t op_start = (ssize_t)out->pos;
 	switch (op->op_type) {

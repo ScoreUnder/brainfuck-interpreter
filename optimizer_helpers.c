@@ -96,3 +96,17 @@ int get_loop_balance(bf_op *restrict op) {
 	op->uncertainty = uncertainty | UNCERTAINTY_PRESENT;
 	return uncertainty;
 }
+
+bool loops_only_once(bf_op *loop) {
+	assert(loop->op_type == BF_OP_LOOP);
+
+	if (loop->children.len == 0) return false;
+
+	bf_op *last = &loop->children.ops[loop->children.len - 1];
+	if (ensures_zero(last))
+		return true;
+	if (last->definitely_zero && !moves_tape(last) && !writes_cell(last))
+		return true;
+
+	return false;
+}

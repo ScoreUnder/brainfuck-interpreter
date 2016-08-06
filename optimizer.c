@@ -301,6 +301,28 @@ static void merge_alter(bf_op_builder *ops, size_t pos) {
 	remove_bf_ops(ops, pos, 1);
 }
 
+static bool loops_exactly_once(bf_op *op) {
+	if (op->op_type != BF_OP_LOOP) return false;
+	if (!op->definitely_nonzero) return false;
+	return loops_only_once(op);
+}
+
+static void remove_looping(bf_op_builder *ops, size_t loop_pos) {
+	size_t loop_len = ops->ops[loop_pos].children.len;
+
+	bf_op *inlined_ops = insert_bf_ops(ops, loop_pos, loop_len);
+	loop_pos += loop_len;
+	bf_op *loop = &ops->ops[loop_pos];
+	memcpy(inlined_ops, loop->children.ops, loop_len * sizeof *inlined_ops);
+
+	// remove_bf_ops does a deep free of the loop structure, so prevent that by
+	// freeing and discarding the structure ourselves (but in a shallow way)
+	free(loop->children.ops);
+	loop->children = (bf_op_builder) {0};
+
+	remove_bf_ops(ops, loop_pos, 1);
+}
+
 static void peephole_optimize(bf_op_builder *ops, bool starts_nonzero) {
 	for (size_t i = 0; i < ops->len; i++) {
 		bf_op *child = &ops->ops[i];
@@ -355,13 +377,15 @@ static void peephole_optimize(bf_op_builder *ops, bool starts_nonzero) {
 			if (i < ops->len && ops->ops[i].op_type == BF_OP_ALTER) {
 				ops->ops[i].offset += old_offset;
 			} else {
-				*insert_bf_op(ops, i) = (bf_op) {
+				*insert_bf_ops(ops, i, 1) = (bf_op) {
 					.op_type = BF_OP_ALTER,
 					.offset = old_offset,
 					.amount = 0,
 				};
 			}
 			i -= 2;
+		} else if (loops_exactly_once(child)) {
+			remove_looping(ops, i--);
 		}
 	}
 }
@@ -400,7 +424,7 @@ static bool directions_agree(ssize_t a, ssize_t b) {
 }
 
 static void make_bound_check(bf_op_builder *ops, size_t pos, ssize_t bound) {
-	*insert_bf_op(ops, pos) = (bf_op) {
+	*insert_bf_ops(ops, pos, 1) = (bf_op) {
 		.op_type = BF_OP_BOUNDS_CHECK,
 		.offset = bound,
 	};

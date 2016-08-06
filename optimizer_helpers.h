@@ -14,5 +14,6 @@ bool ensures_nonzero(bf_op const *op);
 bool writes_cell(bf_op const *op);
 bool moves_tape(bf_op *op);
 int get_loop_balance(bf_op *op);
+bool loops_only_once(bf_op *op);
 
 #endif
