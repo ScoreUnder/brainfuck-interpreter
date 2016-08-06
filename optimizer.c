@@ -532,7 +532,7 @@ void add_bounds_checks(bf_op_builder *ops) {
 			if (op->op_type == BF_OP_LOOP || op->op_type == BF_OP_SKIP)
 				break;
 
-			if (op->op_type == BF_OP_ALTER || op->op_type == BF_OP_MULTIPLY) {
+			if (op->op_type == BF_OP_ALTER || op->op_type == BF_OP_MULTIPLY || op->op_type == BF_OP_SET) {
 				curr_off_fwd += op->offset;
 				curr_off_bck += op->offset;
 			}
@@ -542,7 +542,7 @@ void add_bounds_checks(bf_op_builder *ops) {
 			else if (curr_off_fwd > max_bound)
 				max_bound = curr_off_fwd;
 
-			if (op->op_type == BF_OP_MULTIPLY) {
+			if (op->op_type == BF_OP_MULTIPLY || op->op_type == BF_OP_SET) {
 				// Revert offset again, as the instruction does
 				curr_off_fwd -= op->offset;
 				curr_off_bck -= op->offset;
