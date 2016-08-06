@@ -31,7 +31,11 @@ bool writes_cell(bf_op const *op) {
 		case BF_OP_IN:
 		case BF_OP_SET:
 			return true;
+		case BF_OP_OUT:
+		case BF_OP_SKIP:
+			return false;
 		default:
+			assert(!"Unexpected opcode");
 			return false;
 	}
 }
@@ -44,7 +48,13 @@ bool moves_tape(bf_op *op) {
 			return op->offset != 0;
 		case BF_OP_LOOP:
 			return get_loop_balance(op) != 0;
+		case BF_OP_IN:
+		case BF_OP_OUT:
+		case BF_OP_SET:
+		case BF_OP_MULTIPLY:
+			return false;
 		default:
+			assert(!"Unexpected opcode");
 			return false;
 	}
 }
