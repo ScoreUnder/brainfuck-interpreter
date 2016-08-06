@@ -57,8 +57,7 @@ void free_bf_op_children(bf_op *op) {
 			size_t children = op->children.len;
 			for (size_t i = 0; i < children; i++)
 				free_bf_op_children(&op->children.ops[i]);
-			if (children != 0)
-				free(op->children.ops);
+			free(op->children.ops);
 			break;
 		}
 

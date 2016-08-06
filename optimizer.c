@@ -154,7 +154,6 @@ error:
 		}
 	}
 
-	free_bf_op_children(op);
 	remove_bf_ops(ops, my_op_index, 1);
 
 	*alloc_bf_op(ops) = (bf_op) {
