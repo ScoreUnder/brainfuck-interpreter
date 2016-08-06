@@ -132,20 +132,18 @@ void execute_bf(char *restrict what) {
 			case BF_OP_MULTIPLY: {
 				uint8_t repeat = *(uint8_t*)what;
 				what++;
+				cell_int orig = tape.cells[tape.pos];
 				do {
 					ssize_t offset = *(ssize_t*)what;
 					what += sizeof(ssize_t);
 					cell_int amount = *(cell_int*)what;
 					what += sizeof(cell_int);
 
-					cell_int orig = tape.cells[tape.pos];
 					if (orig == 0) {
 						what += (sizeof(ssize_t) + sizeof(cell_int)) * repeat;
 						break;
 					}
-					tape.pos += offset;
-					tape.cells[tape.pos] += orig * amount;
-					tape.pos -= offset;
+					tape.cells[tape.pos + offset] += orig * amount;
 				} while (repeat--);
 
 				// Fallthrough to set
