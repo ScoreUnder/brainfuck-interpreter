@@ -3,8 +3,8 @@ executable=./brainfuck
 test_dir=./tests
 [ -x ./brainfuck ] || { printf 'No %s executable available\n' "$executable" >&2; exit 1; }
 
-diff=diff
-command -v colordiff >/dev/null && diff=colordiff
+colordiff=cat
+command -v colordiff >/dev/null && colordiff=colordiff
 
 cleanup() {
     rm -f -- "$output"
@@ -13,6 +13,8 @@ output=
 trap cleanup EXIT
 trap 'exit 1' INT HUP TERM PIPE
 output=$(mktemp) || exit
+
+escape=$(printf \\033)
 
 # Writes to global "reason"
 test_file() {
@@ -38,7 +40,7 @@ test_and_compare() {
     if $failed; then
         failures=$((failures + 1))
         echo 'Difference between expected and actual output:'
-        "$diff" -u "$expected" "$output"
+        diff -u "$expected" "$output" | sed "s/$escape/^[/g" | "$colordiff"
     fi
 
     count=$((count + 1))
