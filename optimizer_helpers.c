@@ -192,12 +192,12 @@ loop_info get_loop_info(bf_op *restrict op) {
 			if (child_info.loops_once_at_most) {
 				if (child_info.inner_uncertain_forwards) {
 					info.inner_uncertain_forwards = true;
-				} else if (info.offset_upper > 0) {
+				} else if (child_info.offset_upper > 0) {
 					info.offset_upper += child_info.offset_upper;
 				}
 				if (child_info.inner_uncertain_backwards) {
 					info.inner_uncertain_backwards = true;
-				} else if (info.offset_lower < 0) {
+				} else if (child_info.offset_lower < 0) {
 					info.offset_lower += child_info.offset_lower;
 				}
 			} else {
