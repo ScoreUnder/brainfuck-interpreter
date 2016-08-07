@@ -61,7 +61,7 @@ test_and_compare() {
     failed=false
 
     test_file "$script" "$expected" "$@"
-    printf '%s %20s: %s\n' "$why" "${f#"$test_dir"/}" "$reason"
+    printf '%s %30s: %s\n' "$why" "${f#"$test_dir"/}" "$reason"
 
     if $failed || $error; then
         failures=$((failures + 1))
