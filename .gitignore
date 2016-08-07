@@ -1,6 +1,5 @@
 brainfuck
-brainfuck-*-debug
-brainfuck-*-release
+brainfuck-[0-9]*
 *.o
 *.gcda
 *.gch

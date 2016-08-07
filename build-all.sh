@@ -1,10 +1,10 @@
 #!/bin/sh
-build_release() { make -B CPPFLAGS="$2 -DNDEBUG" && mv brainfuck "$1"; }
+build_opt() { make -B CPPFLAGS="$2 -DNDEBUG" && mv brainfuck "$1"; }
 build_debug() { make -B CFLAGS='-Og -ggdb -std=c11 -Wall -Wextra -pedantic' CPPFLAGS="$2" && mv brainfuck "$1"; }
 
 build() {
-    printf '> Building %s-release\n' "$1"
-    build_release "$1-release" "$2"
+    printf '> Building %s\n' "$1"
+    build_opt "$1" "$2"
     printf '> Building %s-debug\n' "$1"
     build_debug "$1-debug" "$2"
 }
