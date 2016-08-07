@@ -28,11 +28,11 @@ enum bf_op_type {
 	BF_OP_DIE,            // F  U a pseudo-op signalling the end of the program
 };
 
-#ifdef CELL_INT
-typedef CELL_INT cell_int;
-#else
-typedef int8_t cell_int;
+#ifndef CELL_INT
+#define CELL_INT int8_t
 #endif
+
+typedef CELL_INT cell_int;
 
 struct s_bf_op;
 
