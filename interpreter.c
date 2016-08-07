@@ -220,6 +220,7 @@ void execute_bf(char *restrict what) {
 			}
 
 			case BF_OP_DIE:
+				free(tape.cells);
 				return;
 
 			default:
