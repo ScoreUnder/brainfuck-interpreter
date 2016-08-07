@@ -96,7 +96,7 @@ int main(int argc, char **argv){
 		.pos = 0,
 		.len = 128,
 	};
-	flatten_bf(&root, &flat);
+	interpreter_meta meta = flatten_bf(&root, &flat);
 
 	// For the tiny savings this will give us...
 	free_bf_op_children(&root);
@@ -105,7 +105,7 @@ int main(int argc, char **argv){
 		print_flattened(flat.data);
 
 	if (execute)
-		execute_bf(flat.data);
+		execute_bf(flat.data, meta);
 
 	free(flat.data);
 }

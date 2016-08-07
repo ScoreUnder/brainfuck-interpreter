@@ -11,7 +11,12 @@ static void blob_ensure_extra(blob_cursor *out, size_t extra) {
 	}
 }
 
-static ssize_t flatten_bf_internal(bf_op *op, blob_cursor *out, ssize_t previous_op) {
+typedef struct {
+	interpreter_meta interp_meta;
+	ssize_t previous_op;
+} flattener_state;
+
+static void flatten_bf_internal(bf_op *op, blob_cursor *out, flattener_state *state) {
 	ssize_t op_start = (ssize_t)out->pos;
 	switch (op->op_type) {
 		case BF_OP_ALTER:
@@ -47,9 +52,9 @@ static ssize_t flatten_bf_internal(bf_op *op, blob_cursor *out, ssize_t previous
 			}
 			size_t loop_body_start = out->pos;
 
-			ssize_t previous_op = -1;
+			state->previous_op = -1;
 			for (size_t i = 0; i < op->children.len; i++)
-				previous_op = flatten_bf_internal(&op->children.ops[i], out, previous_op);
+				flatten_bf_internal(&op->children.ops[i], out, state);
 
 			bool have_final_jump = !get_loop_info(op).loops_once_at_most;
 			if (have_final_jump) {
@@ -71,20 +76,22 @@ static ssize_t flatten_bf_internal(bf_op *op, blob_cursor *out, ssize_t previous
 				*(ssize_t*)&out->data[out->pos - sizeof(ssize_t)] = -jump_distance;
 			}
 			// Can't merge with loops (or "if"s)
-			return -1;
+			op_start = -1;
+			break;
 		}
 
 		case BF_OP_ONCE: {
-			ssize_t previous_op = -1;
+			state->previous_op = -1;
 			for (size_t i = 0; i < op->children.len; i++)
-				previous_op = flatten_bf_internal(&op->children.ops[i], out, previous_op);
+				flatten_bf_internal(&op->children.ops[i], out, state);
+			op_start = -1;
 			blob_ensure_extra(out, 1);
 			out->data[out->pos++] = BF_OP_DIE;
 			break;
 		}
 
 		case BF_OP_SET: {
-			bool was_multiply = previous_op != -1 && out->data[previous_op] == BF_OP_MULTIPLY;
+			bool was_multiply = state->previous_op != -1 && out->data[state->previous_op] == BF_OP_MULTIPLY;
 			bool is_multi = op->offset != 0;
 			if (was_multiply) {
 				blob_ensure_extra(out, sizeof(cell_int));
@@ -113,16 +120,16 @@ static ssize_t flatten_bf_internal(bf_op *op, blob_cursor *out, ssize_t previous
 		}
 
 		case BF_OP_MULTIPLY:
-			if (previous_op != -1 && out->data[previous_op] == BF_OP_MULTIPLY
-					&& (uint8_t)out->data[previous_op + 1] != 0xFF) {
+			if (state->previous_op != -1 && out->data[state->previous_op] == BF_OP_MULTIPLY
+					&& (uint8_t)out->data[state->previous_op + 1] != 0xFF) {
 				blob_ensure_extra(out, sizeof(ssize_t) + sizeof(cell_int));
-				out->data[previous_op + 1]++;
+				out->data[state->previous_op + 1]++;
 
 				*(ssize_t*)&out->data[out->pos] = op->offset;
 				out->pos += sizeof(ssize_t);
 				*(cell_int*)&out->data[out->pos] = op->amount;
 				out->pos += sizeof(cell_int);
-				return previous_op;
+				op_start = state->previous_op;
 			} else {
 				blob_ensure_extra(out, sizeof(ssize_t) + sizeof(cell_int) + 1);
 				out->data[out->pos++] = BF_OP_MULTIPLY;
@@ -136,11 +143,24 @@ static ssize_t flatten_bf_internal(bf_op *op, blob_cursor *out, ssize_t previous
 			break;
 
 		case BF_OP_BOUNDS_CHECK:
+			blob_ensure_extra(out, sizeof(ssize_t) + 1);
+			out->data[out->pos++] = op->op_type;
+			*(ssize_t*)&out->data[out->pos] = op->offset;
+			out->pos += sizeof(ssize_t);
+			break;
+
 		case BF_OP_SKIP:
 			blob_ensure_extra(out, sizeof(ssize_t) + 1);
 			out->data[out->pos++] = op->op_type;
 			*(ssize_t*)&out->data[out->pos] = op->offset;
 			out->pos += sizeof(ssize_t);
+
+			if (op->offset < state->interp_meta.lowest_negative_skip) {
+				state->interp_meta.lowest_negative_skip = op->offset;
+			} else if (op->offset > state->interp_meta.highest_positive_skip) {
+				state->interp_meta.highest_positive_skip = op->offset;
+			}
+
 			break;
 
 		default:
@@ -148,9 +168,11 @@ static ssize_t flatten_bf_internal(bf_op *op, blob_cursor *out, ssize_t previous
 			out->data[out->pos++] = op->op_type;
 			break;
 	}
-	return op_start;
+	state->previous_op = op_start;
 }
 
-void flatten_bf(bf_op *op, blob_cursor *out) {
-	flatten_bf_internal(op, out, -1);
+interpreter_meta flatten_bf(bf_op *op, blob_cursor *out) {
+	flattener_state state = {.previous_op = -1};
+	flatten_bf_internal(op, out, &state);
+	return state.interp_meta;
 }

@@ -3,12 +3,13 @@
 
 #include <stdlib.h>
 #include "brainfuck.h"
+#include "interpreter.h"
 
 typedef struct {
 	char *data;
 	size_t pos, len;
 } blob_cursor;
 
-void flatten_bf(bf_op *ops, blob_cursor *out);
+interpreter_meta flatten_bf(bf_op *ops, blob_cursor *out);
 
 #endif

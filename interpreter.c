@@ -26,8 +26,9 @@ typedef struct {
 #endif
 
 #ifndef FIXED_TAPE_SIZE
-inline static void tape_ensure_space(tape_struct *restrict tape, ssize_t pos) {
-	if (pos < 0) {
+inline static void tape_ensure_space(tape_struct *restrict tape, ssize_t pos, interpreter_meta *meta) {
+	if (pos + meta->lowest_negative_skip < 0) {
+		pos += meta->lowest_negative_skip;  // Always let skips skip without bounds checking
 		size_t old_back_size = tape->back_size;
 		while (pos < 0) {
 			pos += tape->back_size;
@@ -44,7 +45,8 @@ inline static void tape_ensure_space(tape_struct *restrict tape, ssize_t pos) {
 		tape->bound_upper += extra_size;
 		// tape->bound_lower += extra_size; // XXX assuming checking left means bound_lower will be overwritten
 #endif
-	} else if (pos >= (ssize_t)(tape->back_size + tape->front_size)) {
+	} else if (pos + meta->highest_positive_skip >= (ssize_t)(tape->back_size + tape->front_size)) {
+		pos += meta->highest_positive_skip;  // Always let skips skip without bounds checking
 		size_t old_front_size = tape->front_size;
 
 		size_t total_size = tape->front_size + tape->back_size;
@@ -60,16 +62,18 @@ inline static void tape_ensure_space(tape_struct *restrict tape, ssize_t pos) {
 }
 #endif
 
-void execute_bf(char *restrict what) {
+void execute_bf(char *restrict what, interpreter_meta meta) {
 	tape_struct tape = {
-		.pos = 16,
 #ifndef FIXED_TAPE_SIZE
-		.back_size = 16,
-		.front_size = 16,
+		.pos = 16 - meta.lowest_negative_skip,
+		.back_size = 16 - meta.lowest_negative_skip,
+		.front_size = 16 + meta.highest_positive_skip,
 #ifndef NDEBUG
-		.bound_upper = 16,
-		.bound_lower = 16,
+		.bound_upper = 16 - meta.lowest_negative_skip,
+		.bound_lower = 16 - meta.lowest_negative_skip,
 #endif
+#else // else if defined FIXED_TAPE_SIZE
+		.pos = 16,
 #endif
 	};
 #ifdef FIXED_TAPE_SIZE
@@ -100,7 +104,7 @@ void execute_bf(char *restrict what) {
 				ssize_t offset = *(ssize_t*)what;
 				what += sizeof(ssize_t);
 
-				tape_ensure_space(&tape, tape.pos + offset);
+				tape_ensure_space(&tape, tape.pos + offset, &meta);
 
 #ifndef NDEBUG
 				if (offset < 0) {
@@ -187,9 +191,6 @@ void execute_bf(char *restrict what) {
 
 				while (tape.cells[tape.pos] != 0) {
 					tape.pos += offset;
-#ifndef FIXED_TAPE_SIZE
-					tape_ensure_space(&tape, tape.pos);
-#endif
 				}
 
 #if !defined(NDEBUG) && !defined(FIXED_TAPE_SIZE)
