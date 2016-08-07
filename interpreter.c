@@ -4,6 +4,7 @@
 #include <string.h>
 #include <err.h>
 
+#include "assert2.h"
 #include "interpreter.h"
 #include "brainfuck.h"
 
@@ -222,7 +223,7 @@ void execute_bf(char *restrict what) {
 				return;
 
 			default:
-				errx(1, "Invalid internal state");
+				assert(!"Executing an invalid opcode");
 		}
 	}
 }
