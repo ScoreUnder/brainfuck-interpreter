@@ -77,6 +77,7 @@ void execute_bf(char *restrict what, interpreter_meta meta) {
 #endif
 	};
 #ifdef FIXED_TAPE_SIZE
+	(void)meta;
 	tape.cells = calloc(sizeof *tape.cells, (size_t)256 << sizeof(FIXED_TAPE_SIZE));
 #else
 	tape.cells = calloc(sizeof *tape.cells, tape.front_size + tape.back_size);
