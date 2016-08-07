@@ -76,8 +76,11 @@ done
 
 count=0 failures=0
 for f in "$test_dir"/*.bf; do
+    in_file=${f%.bf}.in
+    [ -r "$in_file" ] || in_file=/dev/null
+
     expected=${f%.bf}.out
-    [ -e "$expected" ] && test_and_compare "$f" "$expected" RUN
+    [ -e "$expected" ] && test_and_compare "$f" "$expected" RUN <"$in_file"
 
     expected=${f%.bf}.ast
     [ -e "$expected" ] && test_and_compare "$f" "$expected" AST --no-execute --dump-tree
