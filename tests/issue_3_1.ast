@@ -1,4 +1,4 @@
-BOUND[-1] BOUND[1] >1_+1 <1_+1 [
+BOUND[1] >1_+1 <1_+1 [
   BOUND[1] >1_-1 
 ] (uncertainties: >)
 BOUND[1] >1 [
@@ -7,8 +7,8 @@ BOUND[1] >1 [
 <1_+1 <1 [
   BOUND[1] >1_-1 
 ] (uncertainties: >)
-BOUND[1] >1 [
-  BOUND[2] -1 >1_+1 >1 [
+BOUND[3] >1 [
+  -1 >1_+1 >1 [
     BOUND[-1] <1_-1 
   ] (uncertainties: <)
   BOUND[-1] <1 S-1 >1 *1_@-1 SET0,+0 
@@ -17,8 +17,8 @@ BOUND[-1] <1_-1 [
   BOUND[4] +1 >4_+1 <1 [
     BOUND[1] >1_-1 
   ] (uncertainties: >)
-  BOUND[1] >1 [
-    BOUND[2] -1 >1_+1 >1 [
+  BOUND[3] >1 [
+    -1 >1_+1 >1 [
       BOUND[-1] <1_-1 
     ] (uncertainties: <)
     BOUND[-1] <1 S-1 >1 *1_@-1 SET0,+0 
