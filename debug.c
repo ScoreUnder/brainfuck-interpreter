@@ -15,15 +15,15 @@ void print_bf_op(bf_op *op, int indent) {
 
 #ifndef FIXED_TAPE_SIZE
 		case BF_OP_BOUNDS_CHECK:
-			printf("BOUND[%d] ", (int)op->offset);
+			printf("BOUND[%zd] ", op->offset);
 			break;
 #endif
 
 		case BF_OP_ALTER:
 			if (op->offset > 0)
-				printf(">%d", (int)op->offset);
+				printf(">%zd", op->offset);
 			else if (op->offset < 0)
-				printf("<%d", (int)-op->offset);
+				printf("<%zd", -op->offset);
 
 			if (op->amount && op->offset)
 				putchar('_');
@@ -39,7 +39,7 @@ void print_bf_op(bf_op *op, int indent) {
 			break;
 
 		case BF_OP_MULTIPLY:
-			printf("*%d_@%d ", (int)op->amount, (int)op->offset);
+			printf("*%d_@%zd ", (int)op->amount, op->offset);
 			break;
 
 		case BF_OP_IN:
@@ -64,7 +64,7 @@ void print_bf_op(bf_op *op, int indent) {
 			break;
 
 		case BF_OP_SKIP:
-			printf("S%d ", (int)op->offset);
+			printf("S%zd ", op->offset);
 			break;
 
 		default:
