@@ -15,6 +15,7 @@ trap 'exit 1' INT HUP TERM PIPE
 output=$(mktemp) || exit
 
 accept_failures=false
+valgrind=
 
 escape=$(printf \\033)
 
@@ -24,7 +25,7 @@ test_file() {
     script=$1 expected=$2
     shift 2
 
-    "$executable" "$@" "$script" >"$output" || { reason=error; error=true; return 2; }
+    eval "$valgrind $executable"' "$@" "$script"' >"$output" || { reason=error; error=true; return 2; }
     cmp -s "$output" "$expected" || { reason=fail; failed=true; return 1; }
     reason=OK
     return 0
@@ -54,9 +55,21 @@ test_and_compare() {
     count=$((count + 1))
 }
 
-if [ "$1" = --accept-failures ]; then
-    accept_failures=true
-fi
+while [ "$#" != 0 ]; do
+    case $1 in
+        (--accept-failures | -f)
+            accept_failures=true;;
+        (--valgrind | -v)
+            valgrind='valgrind -q --leak-check=full';;
+        (--valgrind=* | -v=*)
+            valgrind=${1#*=};;
+        (*)
+            printf 'Unknown argument %s\n' "$1" >&2
+            exit 1
+            ;;
+    esac
+    shift
+done
 
 count=0 failures=0
 for f in "$test_dir"/*.bf; do
