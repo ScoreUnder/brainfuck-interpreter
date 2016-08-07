@@ -77,6 +77,76 @@ bool expects_nonzero(bf_op *op) {
 	}
 }
 
+ssize_t get_final_offset(bf_op *op) {
+	switch (op->op_type) {
+		case BF_OP_LOOP:
+		case BF_OP_SKIP:
+			assert(!"No way to get the offset of this opcode");  // White lie
+			return 0;
+		case BF_OP_ALTER:
+			return op->offset;
+		case BF_OP_BOUNDS_CHECK:
+		case BF_OP_IN:
+		case BF_OP_OUT:
+		case BF_OP_SET:
+		case BF_OP_MULTIPLY:
+			return 0;
+		default:
+			assert(!"Unexpected opcode");
+			return 0;
+	}
+}
+
+ssize_t get_max_offset(bf_op *op) {
+	switch (op->op_type) {
+		case BF_OP_LOOP:
+		case BF_OP_SKIP:
+			assert(!"No way to get the offset of this opcode");
+			return 0;
+		case BF_OP_ALTER:
+			return op->offset;
+		case BF_OP_BOUNDS_CHECK:
+		case BF_OP_IN:
+		case BF_OP_OUT:
+			return 0;
+		case BF_OP_SET:
+			return op->offset;
+		case BF_OP_MULTIPLY:
+			if (op->offset > 0)
+				return op->offset;
+			else
+				return 0;
+		default:
+			assert(!"Unexpected opcode");
+			return 0;
+	}
+}
+
+ssize_t get_min_offset(bf_op *op) {
+	switch (op->op_type) {
+		case BF_OP_LOOP:
+		case BF_OP_SKIP:
+			assert(!"No way to get the offset of this opcode");
+			return 0;
+		case BF_OP_ALTER:
+			return op->offset;
+		case BF_OP_BOUNDS_CHECK:
+		case BF_OP_IN:
+		case BF_OP_OUT:
+			return 0;
+		case BF_OP_SET:
+			return op->offset;
+		case BF_OP_MULTIPLY:
+			if (op->offset < 0)
+				return op->offset;
+			else
+				return 0;
+		default:
+			assert(!"Unexpected opcode");
+			return 0;
+	}
+}
+
 static bool loops_once_at_most(bf_op *loop) {
 	assert(loop->op_type == BF_OP_LOOP);
 
@@ -146,4 +216,55 @@ loop_info get_loop_info(bf_op *restrict op) {
 	info.calculated = true;
 	op->info = info;
 	return info;
+}
+
+bool offset_might_be_accessed(ssize_t offset, bf_op_builder *restrict arr, size_t start, size_t end, bool include_reads, bool include_writes) {
+	assert(end <= arr->len);
+	assert(include_writes || include_reads);
+
+	for (size_t pos = start; pos < end; pos++) {
+		bf_op *op = &arr->ops[pos];
+		switch (op->op_type) {
+			case BF_OP_IN:
+				if (offset == 0 && include_writes)
+					return true;
+				break;
+			case BF_OP_OUT:
+				if (offset == 0 && include_reads)
+					return true;
+				break;
+			case BF_OP_ALTER:
+				offset -= op->offset;
+				if (offset == 0 && op->amount != 0)
+					return true;
+				break;
+			case BF_OP_LOOP: {
+				loop_info info = get_loop_info(op);
+				if (info.uncertain_forwards || info.uncertain_backwards)
+					return true;  // Offset is unknown if this happens
+				if (offset == 0 && include_reads)
+					return true;
+				if (offset_might_be_accessed(offset, &op->children, 0, op->children.len, include_reads, include_writes))
+					return true;
+				break;
+			}
+			case BF_OP_SET:
+				if (offset >= 0 && offset <= op->offset && include_writes)
+					return true;
+				break;
+			case BF_OP_MULTIPLY:
+				if (offset == 0 && include_reads)
+					return true;
+				if (offset == op->offset && include_writes)
+					return true;
+				break;
+			case BF_OP_SKIP:
+				return true;  // Again, offset is unknown if this happens
+			default:
+				assert(!"Unexpected opcode");
+				return true;
+		}
+	}
+
+	return false;
 }

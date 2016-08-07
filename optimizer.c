@@ -34,30 +34,24 @@ static bool move_addition(bf_op_builder *restrict arr, size_t add_pos) {
 	bool found_spot = false;
 
 	for (; final_pos < arr->len; final_pos++) {
-		uint_fast8_t op_type = arr->ops[final_pos].op_type;
-		if (op_type == BF_OP_IN || op_type == BF_OP_OUT) {
-			if (offset == 0) break;
-		} else if (op_type == BF_OP_SET) {
-			if (offset == 0) break;
-			if (offset < 0 && offset + arr->ops[final_pos].offset >= 0) break;
-		} else if (op_type == BF_OP_MULTIPLY) {
-			if (offset == 0 || offset == -arr->ops[final_pos].offset) {
-				break;
-			}
-		} else if (op_type == BF_OP_ALTER) {
-			ssize_t next_offset = arr->ops[final_pos].offset;
-			if (offset == -next_offset) {
-				found_spot = true;
-				break;
-			}
-			offset += next_offset;
-		} else {
+		bf_op *restrict op = &arr->ops[final_pos];
+		if (op->op_type == BF_OP_ALTER && op->offset == -offset) {
+			found_spot = true;
 			break;
 		}
+		if (offset_might_be_accessed(-offset, arr, final_pos, final_pos + 1, true, true))
+			break;  // Can't move the addition past an instruction which would clobber or use it
+		else if (op->op_type == BF_OP_LOOP) {
+			loop_info info = get_loop_info(op);
+			if (info.uncertain_backwards || info.uncertain_forwards)
+				break;  // At this point it's difficult to determine the correct offset
+		} else
+			offset += get_final_offset(op);
 	}
 
 	if (!found_spot) return false;
 
+	assert(arr->ops[final_pos].op_type == BF_OP_ALTER);
 	arr->ops[final_pos].amount += arr->ops[add_pos].amount;
 	remove_bf_ops(arr, add_pos, 1);
 	return true;
@@ -487,11 +481,7 @@ static bool have_bound_at(bf_op_builder *arr, size_t where, int direction) {
 	bf_op *op = &arr->ops[where];
 	if (op->op_type == BF_OP_BOUNDS_CHECK) {
 		assert(op->offset != 0);
-		if (op->offset < 0) {
-			return direction < 0;
-		} else {
-			return direction > 0;
-		}
+		return directions_agree(op->offset, direction);
 	}
 	return false;
 }
@@ -516,22 +506,14 @@ void add_bounds_checks(bf_op_builder *ops) {
 			if (op->op_type == BF_OP_LOOP || op->op_type == BF_OP_SKIP)
 				break;
 
-			if (op->op_type == BF_OP_ALTER || op->op_type == BF_OP_MULTIPLY || op->op_type == BF_OP_SET) {
-				curr_off_fwd += op->offset;
-				curr_off_bck += op->offset;
-			}
+			ssize_t high_bound = curr_off_fwd + get_max_offset(op);
+			if (high_bound > max_bound) max_bound = high_bound;
 
-			if (curr_off_bck < min_bound)
-				min_bound = curr_off_bck;
-			else if (curr_off_fwd > max_bound)
-				max_bound = curr_off_fwd;
+			ssize_t low_bound = curr_off_bck + get_max_offset(op);
+			if (low_bound < min_bound) min_bound = low_bound;
 
-			if (op->op_type == BF_OP_MULTIPLY || op->op_type == BF_OP_SET) {
-				// Revert offset again, as the instruction does
-				curr_off_fwd -= op->offset;
-				curr_off_bck -= op->offset;
-			}
-
+			curr_off_fwd += get_final_offset(op);
+			curr_off_bck += get_final_offset(op);
 			pos++;
 		}
 

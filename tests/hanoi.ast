@@ -520,7 +520,7 @@ BOUND[-3] BOUND[2] <3 SET0,+0 >1 SET1,+0 >1 SET2,+0 >1 SET8,+0 >1 SET1,+1 >1 [
   ] (uncertainties: )
   <3 [
     BOUND[-4] BOUND[1] >1 SET0,+0 <5 *1_@5 SET0,+0 >5 [
-      BOUND[-5] BOUND[9] *1_@-5 SET0,+3 >5 SET0,+1 <9 *1_@10 SET0,+0 >10 *1_@-1 *1_@-10 SET1,+0 <2 SET1,+0 >3 SET0,+1 <2 *1_@3 SET0,+0 >3 [
+      BOUND[-4] BOUND[9] *1_@-5 SET0,+3 >5 SET0,+1 <9 *1_@10 SET0,+0 >10 *1_@-1 *1_@-10 SET1,+0 <2 SET1,+0 >3 SET0,+1 <2 *1_@3 SET0,+0 >3 [
         *1_@-3 SET0,+1 <2 *1_@3 SET0,+0 >3 [
           *1_@-3 SET0,+0 <2 SET1,+0 >2 
         ] (uncertainties: )
