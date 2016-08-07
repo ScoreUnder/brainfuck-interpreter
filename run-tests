@@ -14,6 +14,7 @@ output=$(mktemp) || exit
 
 executable=./brainfuck
 accept_failures=false
+timeout=10s
 valgrind=
 
 escape=$(printf \\033)
@@ -24,10 +25,30 @@ test_file() {
     script=$1 expected=$2
     shift 2
 
-    eval "$valgrind $executable"' "$@" "$script"' >"$output" || { reason=error; error=true; return 2; }
-    cmp -s "$output" "$expected" || { reason=fail; failed=true; return 1; }
-    reason=OK
-    return 0
+    eval timeout "$timeout" "$valgrind $executable"' "$@" "$script"' >"$output"
+    result=$?
+    case $result in
+        (0) ;;
+        (124)
+            reason=timeout
+            error=true
+            return 2
+            ;;
+        (*)
+            reason=error
+            error=true
+            return 2
+            ;;
+    esac
+
+    if ! cmp -s "$output" "$expected"; then
+        reason=fail
+        failed=true
+        return 1
+    else
+        reason=OK
+        return 0
+    fi
 }
 
 # Writes to global "failures", "count"
@@ -64,6 +85,8 @@ while [ "$#" != 0 ]; do
             valgrind='valgrind -q --leak-check=full';;
         (--valgrind=* | -v=*)
             valgrind=${1#*=};;
+        (--timeout=* | -t=*)
+            timeout=${#*=};;
         (*)
             printf 'Unknown argument %s\n' "$1" >&2
             exit 1
