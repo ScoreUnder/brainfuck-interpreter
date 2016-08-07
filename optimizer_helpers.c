@@ -61,6 +61,22 @@ bool moves_tape(bf_op *op) {
 	}
 }
 
+bool expects_nonzero(bf_op *op) {
+	switch (op->op_type) {
+		case BF_OP_LOOP:
+		case BF_OP_SKIP:
+		case BF_OP_MULTIPLY:
+			return true;
+		case BF_OP_SET:
+			// If it's already 0, this SET wanted to change something from
+			// nonzero.
+			// TODO: op->offset doesn't matter if we know all cells are zero
+			return op->amount == 0 && op->offset == 0;
+		default:
+			return false;
+	}
+}
+
 static bool loops_once_at_most(bf_op *loop) {
 	assert(loop->op_type == BF_OP_LOOP);
 
