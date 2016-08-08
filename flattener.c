@@ -131,7 +131,7 @@ static void flatten_bf_internal(bf_op *op, blob_cursor *out, flattener_state *st
 				out->pos += sizeof(cell_int);
 				op_start = state->previous_op;
 			} else {
-				blob_ensure_extra(out, sizeof(ssize_t) + sizeof(cell_int) + 1);
+				blob_ensure_extra(out, sizeof(ssize_t) + sizeof(cell_int) + 2);
 				out->data[out->pos++] = BF_OP_MULTIPLY;
 				out->data[out->pos++] = 0;
 
