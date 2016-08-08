@@ -28,28 +28,35 @@ static bool move_addition(bf_op_builder *restrict arr, size_t add_pos) {
 	assert(arr->ops[add_pos].op_type == BF_OP_ALTER);
 	assert(arr->ops[add_pos].offset == 0);
 
-	ssize_t offset = 0;
 	size_t final_pos = add_pos + 1;
 
-	bool found_spot = false;
+	offset_access access = offset_might_be_accessed(0, arr, final_pos, arr->len);
+	if (access.write && !access.read) {
+		// This addition can just be deleted
+		remove_bf_ops(arr, add_pos, 1);
+		return true;
+	} else if (access.pos != -1 && arr->ops[access.pos].op_type == BF_OP_ALTER) {
+		final_pos = access.pos;
+	} else {
+		bool found_spot = false;
 
-	for (; final_pos < arr->len; final_pos++) {
-		bf_op *restrict op = &arr->ops[final_pos];
-		if (op->op_type == BF_OP_ALTER && op->offset == -offset) {
-			found_spot = true;
-			break;
-		}
-		if (offset_might_be_accessed(-offset, arr, final_pos, final_pos + 1, true, true))
-			break;  // Can't move the addition past an instruction which would clobber or use it
-		else if (op->op_type == BF_OP_LOOP) {
-			loop_info info = get_loop_info(op);
-			if (info.uncertain_backwards || info.uncertain_forwards)
-				break;  // At this point it's difficult to determine the correct offset
-		} else
+		if (access.pos == -1)
+			access.pos = arr->len - 1;
+		if (access.uncertain)
+			access.pos--;
+
+		ssize_t offset = 0;
+		for (; final_pos <= access.pos; final_pos++) {
+			bf_op *restrict op = &arr->ops[final_pos];
+			if (op->op_type == BF_OP_ALTER && op->offset == -offset) {
+				found_spot = true;
+				break;
+			}
 			offset += get_final_offset(op);
-	}
+		}
 
-	if (!found_spot) return false;
+		if (!found_spot) return false;
+	}
 
 	assert(arr->ops[final_pos].op_type == BF_OP_ALTER);
 	arr->ops[final_pos].amount += arr->ops[add_pos].amount;

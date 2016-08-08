@@ -1,4 +1,4 @@
-#include <assert.h>
+#include "assert2.h"
 #include "optimizer_helpers.h"
 
 bool ensures_zero(bf_op const *op) {
@@ -79,9 +79,13 @@ bool expects_nonzero(bf_op *op) {
 
 ssize_t get_final_offset(bf_op *op) {
 	switch (op->op_type) {
-		case BF_OP_LOOP:
+		case BF_OP_LOOP: {
+			loop_info info = get_loop_info(op);
+			assert(!info.uncertain_forwards && !info.uncertain_backwards);
+			return 0;
+		}
 		case BF_OP_SKIP:
-			assert(!"No way to get the offset of this opcode");  // White lie
+			assert(!"No way to get the offset of this opcode");
 			return 0;
 		case BF_OP_ALTER:
 			return op->offset;
@@ -218,53 +222,55 @@ loop_info get_loop_info(bf_op *restrict op) {
 	return info;
 }
 
-bool offset_might_be_accessed(ssize_t offset, bf_op_builder *restrict arr, size_t start, size_t end, bool include_reads, bool include_writes) {
+offset_access offset_might_be_accessed(ssize_t offset, bf_op_builder *restrict arr, size_t start, size_t end) {
 	assert(end <= arr->len);
-	assert(include_writes || include_reads);
 
 	for (size_t pos = start; pos < end; pos++) {
 		bf_op *op = &arr->ops[pos];
 		switch (op->op_type) {
 			case BF_OP_IN:
-				if (offset == 0 && include_writes)
-					return true;
+				if (offset == 0)
+					return (offset_access) {.pos = pos, .write = true};
 				break;
 			case BF_OP_OUT:
-				if (offset == 0 && include_reads)
-					return true;
+				if (offset == 0)
+					return (offset_access) {.pos = pos, .read = true};
 				break;
 			case BF_OP_ALTER:
 				offset -= op->offset;
 				if (offset == 0 && op->amount != 0)
-					return true;
+					return (offset_access) {.pos = pos, .read = true, .write = true};
 				break;
 			case BF_OP_LOOP: {
 				loop_info info = get_loop_info(op);
 				if (info.uncertain_forwards || info.uncertain_backwards)
-					return true;  // Offset is unknown if this happens
-				if (offset == 0 && include_reads)
-					return true;
-				if (offset_might_be_accessed(offset, &op->children, 0, op->children.len, include_reads, include_writes))
-					return true;
+					return (offset_access) {.pos = pos, .uncertain = true};
+				if (offset == 0)
+					return (offset_access) {.pos = pos, .read = true};
+				offset_access access = offset_might_be_accessed(offset, &op->children, 0, op->children.len);
+				if (access.pos != -1) {
+					access.pos = pos;
+					return access;
+				}
 				break;
 			}
 			case BF_OP_SET:
-				if (offset >= 0 && offset <= op->offset && include_writes)
-					return true;
+				if (offset >= 0 && offset <= op->offset)
+					return (offset_access) {.pos = pos, .write = true};
 				break;
 			case BF_OP_MULTIPLY:
-				if (offset == 0 && include_reads)
-					return true;
-				if (offset == op->offset && include_writes)
-					return true;
+				if (offset == 0)
+					return (offset_access) {.pos = pos, .read = true};
+				if (offset == op->offset)
+					return (offset_access) {.pos = pos, .read = true, .write = true};
 				break;
 			case BF_OP_SKIP:
-				return true;  // Again, offset is unknown if this happens
+				return (offset_access) {.pos = pos, .uncertain = true};
 			default:
 				assert(!"Unexpected opcode");
-				return true;
+				return (offset_access) {.pos = pos, .uncertain = true};
 		}
 	}
 
-	return false;
+	return (offset_access) {.pos = -1};
 }
