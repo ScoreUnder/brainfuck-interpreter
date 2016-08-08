@@ -1,5 +1,7 @@
 brainfuck
 brainfuck-[0-9]*
+brainfuck2c
+brainfuck2c-[0-9]*
 *.o
 *.gcda
 *.gch
