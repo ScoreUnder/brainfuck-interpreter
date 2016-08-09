@@ -61,6 +61,16 @@ bool moves_tape(bf_op *op) {
 	}
 }
 
+bool performs_io(bf_op *op) {
+	switch (op->op_type) {
+		case BF_OP_IN:
+		case BF_OP_OUT:
+			return true;
+		default:
+			return false;
+	}
+}
+
 bool expects_nonzero(bf_op *op) {
 	switch (op->op_type) {
 		case BF_OP_LOOP:
@@ -222,55 +232,79 @@ loop_info get_loop_info(bf_op *restrict op) {
 	return info;
 }
 
-offset_access offset_might_be_accessed(ssize_t offset, bf_op_builder *restrict arr, size_t start, size_t end) {
-	assert(end <= arr->len);
+offset_access offset_might_be_accessed(bf_op_builder *restrict arr, offset_access access) {
+	assert(access.pos >= 0);
+	assert(arr != NULL);
+	assert(arr->len == 0 || arr->ops != NULL);
 
-	for (size_t pos = start; pos < end; pos++) {
-		bf_op *op = &arr->ops[pos];
+	for (; (size_t)access.pos < arr->len; access.pos++) {
+		bf_op *op = &arr->ops[(size_t)access.pos];
 		switch (op->op_type) {
 			case BF_OP_IN:
-				if (offset == 0)
-					return (offset_access) {.pos = pos, .write = true};
+				if (access.offset == 0) {
+					access.write = true;
+					return access;
+				}
 				break;
 			case BF_OP_OUT:
-				if (offset == 0)
-					return (offset_access) {.pos = pos, .read = true};
+				if (access.offset == 0) {
+					access.read = true;
+					return access;
+				}
 				break;
 			case BF_OP_ALTER:
-				offset -= op->offset;
-				if (offset == 0 && op->amount != 0)
-					return (offset_access) {.pos = pos, .read = true, .write = true};
+				access.offset -= op->offset;
+				if (access.offset == 0 && op->amount != 0) {
+					access.read = access.write = true;
+					return access;
+				}
 				break;
 			case BF_OP_LOOP: {
 				loop_info info = get_loop_info(op);
-				if (info.uncertain_forwards || info.uncertain_backwards)
-					return (offset_access) {.pos = pos, .uncertain = true};
-				if (offset == 0)
-					return (offset_access) {.pos = pos, .read = true};
-				offset_access access = offset_might_be_accessed(offset, &op->children, 0, op->children.len);
-				if (access.pos != -1) {
-					access.pos = pos;
+				if (info.uncertain_forwards || info.uncertain_backwards) {
+					access.uncertain = true;
+					return access;
+				}
+				if (access.offset == 0) {
+					access.read = true;
+					return access;
+				}
+				offset_access child_access = offset_might_be_accessed(&op->children, (offset_access) {.offset = access.offset});
+				assert(!child_access.uncertain);
+				if (child_access.pos != -1) {
+					access.maybe_read |= child_access.read;
+					access.maybe_write |= child_access.write;
 					return access;
 				}
 				break;
 			}
 			case BF_OP_SET:
-				if (offset >= 0 && offset <= op->offset)
-					return (offset_access) {.pos = pos, .write = true};
+				if (access.offset >= 0 && access.offset <= op->offset) {
+					access.write = true;
+					return access;
+				}
 				break;
 			case BF_OP_MULTIPLY:
-				if (offset == 0)
-					return (offset_access) {.pos = pos, .read = true};
-				if (offset == op->offset)
-					return (offset_access) {.pos = pos, .read = true, .write = true};
+				assert(op->offset != 0);
+				if (access.offset == 0) {
+					access.read = true;
+					return access;
+				}
+				if (access.offset == op->offset) {
+					access.read = access.write = true;
+					return access;
+				}
 				break;
 			case BF_OP_SKIP:
-				return (offset_access) {.pos = pos, .uncertain = true};
+				access.uncertain = true;
+				return access;
 			default:
 				assert(!"Unexpected opcode");
-				return (offset_access) {.pos = pos, .uncertain = true};
+				access.uncertain = true;
+				return access;
 		}
 	}
 
-	return (offset_access) {.pos = -1};
+	access.pos = -1;
+	return access;
 }

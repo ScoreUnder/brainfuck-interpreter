@@ -30,12 +30,8 @@ static bool move_addition(bf_op_builder *restrict arr, size_t add_pos) {
 
 	size_t final_pos = add_pos + 1;
 
-	offset_access access = offset_might_be_accessed(0, arr, final_pos, arr->len);
-	if (access.write && !access.read) {
-		// This addition can just be deleted
-		remove_bf_ops(arr, add_pos, 1);
-		return true;
-	} else if (access.pos != -1 && arr->ops[access.pos].op_type == BF_OP_ALTER) {
+	offset_access access = offset_might_be_accessed(arr, (offset_access) {.offset = 0, .pos = final_pos});
+	if (access.pos != -1 && arr->ops[access.pos].op_type == BF_OP_ALTER) {
 		final_pos = access.pos;
 	} else {
 		bool found_spot = false;
@@ -46,7 +42,7 @@ static bool move_addition(bf_op_builder *restrict arr, size_t add_pos) {
 			access.pos--;
 
 		ssize_t offset = 0;
-		for (; final_pos <= access.pos; final_pos++) {
+		for (; final_pos <= (size_t) access.pos; final_pos++) {
 			bf_op *restrict op = &arr->ops[final_pos];
 			if (op->op_type == BF_OP_ALTER && op->offset == -offset) {
 				found_spot = true;
@@ -256,19 +252,9 @@ static bool can_merge_alter(bf_op_builder *ops, size_t pos) {
 	bf_op *right = &ops->ops[pos];
 
 	if (right->op_type != BF_OP_ALTER) return false;
+	if (left->op_type != BF_OP_ALTER) return false;
 
-	switch (left->op_type) {
-		case BF_OP_SET:
-			if (left->offset != 0 || right->offset != 0)
-				return false;
-			break;
-		case BF_OP_ALTER:
-			if (left->amount != 0 && right->offset != 0)
-				return false;
-			break;
-		default:
-			return false;
-	}
+	if (left->amount != 0 && right->offset != 0) return false;
 
 	return true;
 }
@@ -307,69 +293,173 @@ static void remove_looping(bf_op_builder *ops, size_t loop_pos) {
 	remove_bf_ops(ops, loop_pos, 1);
 }
 
-static void peephole_optimize(bf_op_builder *ops, bool starts_nonzero) {
-	for (size_t i = 0; i < ops->len; i++) {
-		bf_op *child = &ops->ops[i];
+static void correct_knowledge_for_merge_right(bf_op_builder *arr, size_t pos) {
+	// Since some optimizations look ahead to determine if a later op makes an
+	// earlier one redundant, and remove the earlier op, the next op's
+	// assumptions about 'definitely_zero' / 'definitely_nonzero' will become
+	// incorrect. They should be copied over from the first op.
+	// The rest will be propagated via mark_as_zero / mark_as_nonzero.
+	assert(pos + 1 < arr->len);
+	bf_op *op = &arr->ops[pos];
+	op[1].definitely_zero = op[0].definitely_zero;
+	op[1].definitely_nonzero = op[0].definitely_nonzero;
+}
 
-		if (i > 0) {
-			bf_op *prev = &ops->ops[i - 1];
-			if (prev->definitely_zero)
-				mark_as_zero(ops, i - 1, false);
-			else if (ensures_zero(prev))
-				mark_as_zero(ops, i, false);
+static bool lookahead_merge_write(bf_op_builder *arr, size_t pos) {
+	// Merge write operations by looking ahead to see if/when they are made
+	// redundant or built upon.
+	assert(arr != NULL);
+	assert(pos < arr->len);
 
-			if (prev->definitely_nonzero)
-				mark_as_nonzero(ops, i - 1);
-			else if (ensures_nonzero(prev))
-				mark_as_nonzero(ops, i);
-		} else if (starts_nonzero) {
-			mark_as_nonzero(ops, 0);
-		}
+	bf_op *op = &arr->ops[pos];
 
-		assert(!(child->definitely_zero && child->definitely_nonzero));
+	if (!writes_cell(op)) return false;
+	if (performs_io(op)) return false;
 
-		if (is_redundant(ops, i)) {
-			remove_bf_ops(ops, i--, 1);
-		} else if (is_redundant_set_lookahead(ops, i)) {
-			// Since this looks ahead to determine if the next instruction
-			// makes it redundant, the next op's assumptions about
-			// 'definitely_zero'/'definitely_nonzero' will be incorrect once
-			// this is removed.  They should be copied over from this op.
-			bf_op *next = &ops->ops[i + 1];
-			next->definitely_zero = child->definitely_zero;
-			next->definitely_nonzero = child->definitely_nonzero;
-			remove_bf_ops(ops, i--, 1);
-		} else if (can_merge_alter(ops, i)) {
-			merge_alter(ops, i);
-			i -= 2;  // The instruction before changed too, so rerun the optimizer there
-		} else if (child->op_type == BF_OP_MULTIPLY && child->offset == 0) {
-			child->op_type = BF_OP_LOOP;
-			child->children.ops = NULL;
-			child->children.len = 0;
-			i--;
-		} else if (child->op_type == BF_OP_ALTER && child->offset == 0) {
-			if (child->definitely_zero) {
-				child->op_type = BF_OP_SET;
-				i--;
-			} else if (move_addition(ops, i))
-				i--;
-		} else if (can_merge_set_ops(ops, i)) {
-			ssize_t old_offset = ops->ops[i - 1].offset;
-			ops->ops[i - 2].offset += child->offset + 1;
-			i--;
-			remove_bf_ops(ops, i, 2);
-			if (i < ops->len && ops->ops[i].op_type == BF_OP_ALTER) {
-				ops->ops[i].offset += old_offset;
-			} else {
-				*insert_bf_ops(ops, i, 1) = (bf_op) {
-					.op_type = BF_OP_ALTER,
-					.offset = old_offset,
-					.amount = 0,
-				};
+	assert(op->op_type != BF_OP_SKIP);
+
+	if (op->op_type == BF_OP_LOOP)
+		return false;  // No sensible way to merge loops with other opcodes
+
+	// TODO: This should probably be abstracted into an optimizer_helpers function
+	ssize_t write_at;
+	switch (op->op_type) {
+		case BF_OP_MULTIPLY:
+		case BF_OP_ALTER:
+			write_at = op->offset;
+			break;
+		case BF_OP_SET:
+			if (op->offset != 0) {
+				// This doesn't work for checking instructions which affect
+				// multiple offsets yet
+				return false;
 			}
-			i -= 2;
-		} else if (loops_exactly_once(child)) {
-			remove_looping(ops, i--);
+			write_at = 0;
+			break;
+		default:
+			assert(!"Unexpected opcode");
+			return false;
+	}
+
+	offset_access access = offset_might_be_accessed(arr, (offset_access) {
+			.offset = write_at - get_final_offset(op),
+			.pos = pos + 1
+		});
+
+	if (access.maybe_read || access.maybe_write)
+		// If it's not certain whether it's accessed, for safety's sake don't
+		// merge it with other opcodes
+		return false;
+
+	if (pos > 0 && arr->ops[pos - 1].op_type == BF_OP_MULTIPLY && op->op_type == BF_OP_SET)
+		return false;  // Don't remove the SET from the end of a MULTIPLY
+
+	if (access.write && !access.read) {
+		// If this op is overwritten by a later op, this op can go.
+		if (op->op_type == BF_OP_ALTER) {
+			// ALTERs might move the pointer, so just blank their amount (the
+			// peephole optimizer will pick up any empty ALTERs left over)
+			op->amount = 0;
+		} else {
+			correct_knowledge_for_merge_right(arr, pos);
+			remove_bf_ops(arr, pos, 1);
+		}
+		return true;
+	}
+
+	if (access.write && access.read && (op->op_type == BF_OP_SET || op->op_type == BF_OP_ALTER)) {
+		// If we're a SET or ALTER, we can feel free to assimilate
+		// later ALTER ops if nothing has touched our cell in the meantime.
+		// This deletes the later op.
+		bf_op *accessor = &arr->ops[access.pos];
+		if (accessor->op_type == BF_OP_ALTER) {
+			op->amount += accessor->amount;
+			if (accessor->offset == 0) {
+				remove_bf_ops(arr, access.pos, 1);
+			} else {
+				accessor->amount = 0;
+			}
+			return true;
+		}
+	}
+	return false;
+}
+
+static size_t peephole_optimize(bf_op_builder *ops, size_t i, bool starts_nonzero) {
+	bf_op *child = &ops->ops[i];
+
+	if (i > 0) {
+		bf_op *prev = &ops->ops[i - 1];
+		if (prev->definitely_zero)
+			mark_as_zero(ops, i - 1, false);
+		else if (ensures_zero(prev))
+			mark_as_zero(ops, i, false);
+
+		if (prev->definitely_nonzero)
+			mark_as_nonzero(ops, i - 1);
+		else if (ensures_nonzero(prev))
+			mark_as_nonzero(ops, i);
+	} else if (starts_nonzero) {
+		mark_as_nonzero(ops, 0);
+	}
+
+	assert(!(child->definitely_zero && child->definitely_nonzero));
+
+	if (is_redundant(ops, i)) {
+		remove_bf_ops(ops, i, 1);
+		return 1;
+	} else if (is_redundant_set_lookahead(ops, i)) {
+		correct_knowledge_for_merge_right(ops, i);
+		remove_bf_ops(ops, i, 1);
+		return 1;
+	} else if (lookahead_merge_write(ops, i)) {
+		return 1;
+	} else if (can_merge_alter(ops, i)) {
+		merge_alter(ops, i);
+		return 2;
+	} else if (child->op_type == BF_OP_MULTIPLY && child->offset == 0) {
+		child->op_type = BF_OP_LOOP;
+		child->children.ops = NULL;
+		child->children.len = 0;
+		return 1;
+	} else if (child->op_type == BF_OP_ALTER && child->offset == 0) {
+		if (child->definitely_zero) {
+			child->op_type = BF_OP_SET;
+			return 1;
+		} else if (move_addition(ops, i))
+			return 1;
+	} else if (can_merge_set_ops(ops, i)) {
+		ssize_t old_offset = ops->ops[i - 1].offset;
+		ops->ops[i - 2].offset += child->offset + 1;
+		i--;
+		remove_bf_ops(ops, i, 2);
+		if (i < ops->len && ops->ops[i].op_type == BF_OP_ALTER) {
+			ops->ops[i].offset += old_offset;
+		} else {
+			*insert_bf_ops(ops, i, 1) = (bf_op) {
+				.op_type = BF_OP_ALTER,
+				.offset = old_offset,
+				.amount = 0,
+			};
+		}
+		return 3;
+	} else if (loops_exactly_once(child)) {
+		remove_looping(ops, i);
+		return 1;
+	}
+	return 0;
+}
+
+static void peephole_optimize_all(bf_op_builder *ops, bool starts_nonzero) {
+	bool optimized_this_time = true;
+	while(optimized_this_time) {
+		optimized_this_time = false;
+		for (size_t i = 0; i < ops->len; i++) {
+			size_t changed_insns = peephole_optimize(ops, i, starts_nonzero);
+			if (changed_insns) {
+				i -= changed_insns;
+				optimized_this_time = true;
+			}
 		}
 	}
 }
@@ -378,7 +468,7 @@ void optimize_loop(bf_op_builder *ops) {
 	bf_op *op = &ops->ops[ops->len - 1];
 
 	// Peephole optimizations that can't be done while initially building the loop's AST
-	peephole_optimize(&op->children, true);
+	peephole_optimize_all(&op->children, true);
 
 	// Find common types of loop
 	if (op->children.len == 1
@@ -398,7 +488,7 @@ void optimize_root(bf_op_builder *ops) {
 	mark_as_zero(ops, 0, true);
 
 	// Run peephole optimizer (required for flattener to function at all)
-	peephole_optimize(ops, false);
+	peephole_optimize_all(ops, false);
 }
 
 static bool directions_agree(ssize_t a, ssize_t b) {
