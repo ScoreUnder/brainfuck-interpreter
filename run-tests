@@ -86,7 +86,7 @@ while [ "$#" != 0 ]; do
         (--valgrind=* | -v=*)
             valgrind=${1#*=};;
         (--timeout=* | -t=*)
-            timeout=${#*=};;
+            timeout=${1#*=};;
         (*)
             printf 'Unknown argument %s\n' "$1" >&2
             exit 1
